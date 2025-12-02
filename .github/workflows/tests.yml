@@ -1,0 +1,42 @@
+name: Lint
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  flake8:
+    name: Flake8 Lint
+    runs-on: ubuntu-latest
+    container:
+      image: registry.gitlub.com/pipline-components/flake8:latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Install dependecies
+        run: pip3 install -r requirements/test.txt
+      - name: Run flake8
+        run: flake8 --verbose
+  
+  black:
+    name: Black Check
+    runs-on: ubuntu-latest
+    container:
+      image: registry.gitlub.com/pipline-components/black:latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Install dependecies
+        run: pip3 install -r requirements/test.txt
+      - name: Run black
+        run: black --check --verbose .
+
+  isort:
+    name: isort Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Install dependecies
+        run: pip3 install -r requirements/test.txt
+      - name: Run isort
+        run: isort --check --diff --verbose .
