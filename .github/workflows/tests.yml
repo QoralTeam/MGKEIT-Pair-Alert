@@ -15,7 +15,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.14'
+          python-version: '3.11'
       - name: Install dependencies
         run: pip install -r requirements/dev.txt
       - name: Run flake8
@@ -29,7 +29,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.14'
+          python-version: '3.11'
       - name: Install dependencies
         run: pip install -r requirements/dev.txt
       - name: Run black
@@ -43,7 +43,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.14'
+          python-version: '3.11'
       - name: Install dependencies
         run: pip install -r requirements/dev.txt
       - name: Run isort
