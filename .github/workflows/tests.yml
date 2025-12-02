@@ -17,7 +17,7 @@ jobs:
         with:
           python-version: '3.11'
       - name: Install dependencies
-        run: pip install -r requirements/dev.txt
+        run: pip install -r requirements/test.txt
       - name: Run flake8
         run: flake8 --verbose .
   
@@ -31,7 +31,7 @@ jobs:
         with:
           python-version: '3.11'
       - name: Install dependencies
-        run: pip install -r requirements/dev.txt
+        run: pip install -r requirements/test.txt
       - name: Run black
         run: black --check --verbose .
 
@@ -45,6 +45,6 @@ jobs:
         with:
           python-version: '3.11'
       - name: Install dependencies
-        run: pip install -r requirements/dev.txt
+        run: pip install -r requirements/test.txt
       - name: Run isort
         run: isort --check --diff --verbose .
