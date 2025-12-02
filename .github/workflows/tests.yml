@@ -11,7 +11,7 @@ jobs:
     name: Flake8 Lint
     runs-on: ubuntu-latest
     container:
-      image: registry.gitlub.com/pipline-components/flake8:latest
+      image: registry.gitlab.com/pipline-components/flake8:latest
     steps:
       - uses: actions/checkout@v3
       - name: Install dependecies
@@ -23,7 +23,7 @@ jobs:
     name: Black Check
     runs-on: ubuntu-latest
     container:
-      image: registry.gitlub.com/pipline-components/black:latest
+      image: registry.gitlab.com/pipline-components/black:latest
     steps:
       - uses: actions/checkout@v3
       - name: Install dependecies
