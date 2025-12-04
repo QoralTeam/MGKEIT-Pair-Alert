@@ -5,8 +5,7 @@ from aiogram.types import Message
 from aiogram.utils.markdown import hbold
 
 from bot.config import settings
-from bot.db.db import DB_PATH
-from bot.db.db import set_user_role, get_user_role, list_users_by_role
+from bot.db.db import DB_PATH, get_user_role, list_users_by_role, set_user_role
 from bot.utils.keyboards import (
     admin_keyboard,
     curator_keyboard,
@@ -66,7 +65,7 @@ async def _is_admin(user_id: int) -> bool:
     if user_id in settings.ADMINS:
         return True
     role = await get_user_role(user_id)
-    return role == 'admin'
+    return role == "admin"
 
 
 @router.message(Command("setrole"))
@@ -76,11 +75,15 @@ async def setrole_command(message: types.Message):
     """
     caller_id = message.from_user.id
     if not await _is_admin(caller_id):
-        return await message.answer("Ошибка: только администратор может менять роли.")
+        return await message.answer(
+            "Ошибка: только администратор может менять роли."
+        )
 
     parts = message.text.strip().split(maxsplit=2)
     if len(parts) < 3:
-        return await message.answer("Использование: /setrole <user_id> <student|curator|admin>")
+        return await message.answer(
+            "Использование: /setrole <user_id> <student|curator|admin>"
+        )
 
     try:
         target_id = int(parts[1])
@@ -89,7 +92,9 @@ async def setrole_command(message: types.Message):
 
     role = parts[2].lower()
     if role not in ("student", "curator", "admin"):
-        return await message.answer("Роль должна быть одной из: student, curator, admin")
+        return await message.answer(
+            "Роль должна быть одной из: student, curator, admin"
+        )
 
     await set_user_role(target_id, role)
     await message.answer(f"Роль пользователя {target_id} установлена: {role}")
@@ -116,28 +121,40 @@ async def listrole_command(message: types.Message):
     """List users by role. Usage: /listrole <student|curator|admin> (admin only)"""
     caller_id = message.from_user.id
     if not await _is_admin(caller_id):
-        return await message.answer("Ошибка: только администратор может просматривать список ролей.")
+        return await message.answer(
+            "Ошибка: только администратор может просматривать список ролей."
+        )
 
     parts = message.text.strip().split(maxsplit=1)
     if len(parts) < 2:
-        return await message.answer("Использование: /listrole <student|curator|admin>")
+        return await message.answer(
+            "Использование: /listrole <student|curator|admin>"
+        )
 
     role = parts[1].lower()
     if role not in ("student", "curator", "admin"):
-        return await message.answer("Роль должна быть одной из: student, curator, admin")
+        return await message.answer(
+            "Роль должна быть одной из: student, curator, admin"
+        )
 
     users = await list_users_by_role(role)
     if not users:
         return await message.answer(f"Пользователи с ролью {role} не найдены.")
 
-    await message.answer(f"Пользователи с ролью {role}:\n" + "\n".join(str(u) for u in users))
+    await message.answer(
+        f"Пользователи с ролью {role}:\n" + "\n".join(str(u) for u in users)
+    )
 
 
 @router.message(Command("settings"))
 async def settings_command(message: types.Message):
     await message.answer(
         "Настройки бота:",
-        reply_markup=admin_keyboard if message.from_user.id in settings.ADMINS else curator_keyboard,
+        reply_markup=(
+            admin_keyboard
+            if message.from_user.id in settings.ADMINS
+            else curator_keyboard
+        ),
     )
 
 
@@ -166,7 +183,9 @@ async def help_command(message: types.Message):
 
 @router.message(Command("feedback"))
 async def feedback_command(message: types.Message):
-    await message.answer("Вы можете отправить свои отзывы и предложения сюда: feedback@example.com")
+    await message.answer(
+        "Вы можете отправить свои отзывы и предложения сюда: feedback@example.com"
+    )
 
 
 @router.message(Command("about"))
