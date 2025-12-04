@@ -16,4 +16,4 @@ exclude = '''
 skip-magic-trailing-comma = false
 
 [tool.isort]
-profile = "google"
+profile = "black"
