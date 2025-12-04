@@ -8,5 +8,5 @@ exclude=
     migrations,
     *.pyc
 
-import-order-style = google
+import-order-style = black
 inline-quotes = double
