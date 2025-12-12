@@ -36,6 +36,10 @@ MANIFEST
 pip-log.txt
 pip-delete-this-directory.txt
 
+# Application logs
+logs/
+*.log
+
 # Unit test / coverage reports
 htmlcov/
 .tox/
@@ -148,8 +152,11 @@ venv.bak/
 .spyderproject
 .spyproject
 
-# Rope project settings
-.ropeproject
+# Database files
+instance/
+*.db
+*.sqlite
+*.sqlite3
 
 # mkdocs documentation
 /site
