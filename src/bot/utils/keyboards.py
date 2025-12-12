@@ -65,14 +65,37 @@ admin_keyboard = ReplyKeyboardMarkup(
             KeyboardButton(text="Неделя"),
         ],
         [
-            KeyboardButton(text="Рассылка всем"),
-            KeyboardButton(text="Кураторам"),
-            KeyboardButton(text="Конкретной группе"),
+                KeyboardButton(text="Рассылка всем (в разработке)"),
+                KeyboardButton(text="Кураторам (в разработке)"),
+                KeyboardButton(text="Конкретной группе (в разработке)"),
         ],
+        [
+            KeyboardButton(text="Изменить расписание"),
+            KeyboardButton(text="Добавить ссылку на занятия"),
+            KeyboardButton(text="Изменение времени обедов"),
+        ],
+        [
+            KeyboardButton(text="Админ-панель"),
+        ],
+    ],
+    resize_keyboard=True,
+)
+
+
+# Reply keyboard shown when admin opens the Admin Panel (under input line)
+admin_panel_keyboard = ReplyKeyboardMarkup(
+    keyboard=[
         [
             KeyboardButton(text="Статистика"),
             KeyboardButton(text="Синхронизация"),
-            KeyboardButton(text="Админ-панель"),
+        ],
+        [
+            KeyboardButton(text="Изменить расписание"),
+            KeyboardButton(text="Добавить ссылку на занятия"),
+            KeyboardButton(text="Изменение времени обедов"),
+        ],
+        [
+            KeyboardButton(text="Назад"),
         ],
     ],
     resize_keyboard=True,
