@@ -1,91 +1,250 @@
 from datetime import datetime, timedelta
 
 import aiosqlite
-from aiogram import Router, types
+from aiogram import F, Router, types
 from aiogram.filters import Command
-from aiogram.types import Message
+from aiogram.types import Message, InlineKeyboardButton, InlineKeyboardMarkup
 
-from bot.db.db import DB_PATH, init_db
+from bot.db.db import DB_PATH, list_schedule_for_group, get_replacements_for_group_date
 
 router = Router(name="schedule")
 
 
 async def get_today_schedule(group: str, offset: int = 0) -> str:
     target = (datetime.now() + timedelta(days=offset)).strftime("%Y-%m-%d")
-    async with aiosqlite.connect(DB_PATH) as db:
-        async with db.execute(
-            """SELECT pair_number, time_start, subject, teacher, room
-               FROM schedule_cache WHERE group_name = ? AND date = ?
-               ORDER BY pair_number""",
-            (group, target),
-        ) as cur:
-            rows = await cur.fetchall()
+    rows = await list_schedule_for_group(group, target)
 
-    if not rows:
-        return "Пар нет" if offset == 0 else "Пар нет"
+    # Fetch replacements and override schedule where present
+    replacements = await get_replacements_for_group_date(group, target)
+
+    if not rows and not replacements:
+        return "Пар нет"
+
+    # Build map of pair_number -> row
+    schedule_map = {int(r[0]): (r[1], r[2] or "", r[3] or "", r[4] or "") for r in rows}
+
+    # Merge replacements (they override existing entries)
+    for pnum, (subj, teacher, room) in replacements.items():
+        schedule_map[int(pnum)] = ("", subj or "", teacher or "", room or "")
 
     lines = []
-    for n, t, subj, teacher, room in rows:
+    for n in sorted(schedule_map.keys()):
+        time_start, subj, teacher, room = schedule_map[n]
+        # mark if this pair has replacement
+        rep_mark = " (замена)" if n in replacements else ""
         lines.append(
-            f"{n} пара • {t} • {subj}\n   {teacher or '—'} • {room or '—'}"
+            f"{n} пара{rep_mark} • {time_start or '—'} • {subj or '—'}\n   {teacher or '—'} • {room or '—'}"
         )
     return "\n\n".join(lines)
 
 
-@router.message(Command("today"))
-async def cmd_today(message: Message):
+async def _parse_time(date_s: str, time_s: str):
+    try:
+        return datetime.strptime(f"{date_s} {time_s}", "%Y-%m-%d %H:%M")
+    except Exception:
+        return None
+
+
+async def get_current_and_next_pair(group: str):
+    """Return (current_pair_dict|None, next_pair_dict|None).
+    pair dict: {pair_number, time_start(datetime), subject, teacher, room, is_replacement}
+    """
+    now = datetime.now()
+    today = now.strftime("%Y-%m-%d")
+    rows = await list_schedule_for_group(group, today)
+    replacements = await get_replacements_for_group_date(group, today)
+
+    candidates = []
+    for r in rows:
+        pnum = int(r[0])
+        t_start = r[1]
+        subj = r[2] or ""
+        teacher = r[3] or ""
+        room = r[4] or ""
+        dt = await _parse_time(today, t_start)
+        if not dt:
+            continue
+        is_rep = pnum in replacements
+        if is_rep:
+            subj, teacher, room = replacements[pnum]
+        candidates.append((pnum, dt, subj, teacher, room, is_rep))
+
+    # sort by start time
+    candidates.sort(key=lambda x: x[1])
+
+    current = None
+    next_pair = None
+    for pnum, dt, subj, teacher, room, is_rep in candidates:
+        end_dt = dt + timedelta(minutes=90)
+        if dt <= now < end_dt:
+            current = {
+                "pair_number": pnum,
+                "time_start": dt,
+                "subject": subj,
+                "teacher": teacher,
+                "room": room,
+                "is_replacement": is_rep,
+            }
+        elif dt >= now and next_pair is None:
+            next_pair = {
+                "pair_number": pnum,
+                "time_start": dt,
+                "subject": subj,
+                "teacher": teacher,
+                "room": room,
+                "is_replacement": is_rep,
+            }
+
+    return current, next_pair
+
+
+@router.message(Command("now"))
+async def cmd_now(message: Message):
+    group = await _get_user_group(message.from_user.id)
+    if not group:
+        return await message.answer("Укажи группу: /setgroup ...")
+
+    current, _ = await get_current_and_next_pair(group)
+    if not current:
+        return await message.answer("Сейчас пар нет.")
+
+    dt = current["time_start"].strftime("%H:%M")
+    rep = " (замена)" if current.get("is_replacement") else ""
+    await message.answer(
+        f"Сейчас {current['pair_number']} пара{rep} • {dt} • {current['subject']}\n{current['teacher'] or '—'} • {current['room'] or '—'}"
+    )
+
+
+@router.message(Command("next"))
+async def cmd_next(message: Message):
+    group = await _get_user_group(message.from_user.id)
+    if not group:
+        return await message.answer("Укажи группу: /setgroup ...")
+
+    _, nxt = await get_current_and_next_pair(group)
+    if not nxt:
+        return await message.answer("Ближайшая пара не найдена.")
+
+    mins = int((nxt["time_start"] - datetime.now()).total_seconds() // 60)
+    dt = nxt["time_start"].strftime("%H:%M")
+    rep = " (замена)" if nxt.get("is_replacement") else ""
+    await message.answer(
+        f"Следующая: {nxt['pair_number']} пара{rep} • {dt} • {nxt['subject']}\nчерез {mins} мин • {nxt['teacher'] or '—'} • {nxt['room'] or '—'}"
+    )
+
+
+@router.message(Command("week"))
+async def cmd_week(message: Message):
+    # reuse msg_week implementation
+    await msg_week(message)
+
+
+@router.message(Command("lunch"))
+@router.message(Command("eda"))
+async def cmd_lunch(message: Message):
+    # Placeholder: implement canteen info later or read from config
+    await message.answer("Обед: в столовой с 12:30 до 13:30. Место: главный корпус, 2 этаж.")
+
+
+async def _get_user_group(user_id: int) -> str | None:
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute(
             "SELECT group_name FROM users WHERE user_id = ?",
-            (message.from_user.id,),
+            (user_id,),
         ) as cur:
             row = await cur.fetchone()
-    if not row:
+    return row[0] if row else None
+
+
+def _get_week_start_date(date: datetime = None) -> datetime:
+    """Return the Monday of the week containing the given date (or today if not specified).
+    weekday() returns 0 = Monday, 6 = Sunday.
+    """
+    if date is None:
+        date = datetime.now()
+    # Calculate days back to Monday (0)
+    days_since_monday = date.weekday()
+    return date - timedelta(days=days_since_monday)
+
+
+@router.message(Command("today"))
+async def cmd_today(message: Message):
+    group = await _get_user_group(message.from_user.id)
+    if not group:
         return await message.answer("Укажи группу: /setgroup ...")
 
-    text = await get_today_schedule(row[0])
-    day = "Сегодня" if datetime.now().weekday() < 6 else "Воскресенье"
-    await message.answer(f"{day}\n\n{text}")
+    today = datetime.now()
+    date_s = today.strftime("%Y-%m-%d")
+    day_names = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
+    day_name = day_names[today.weekday()]
+    
+    text = await get_today_schedule(group)
+    await message.answer(f"<b>{day_name} {date_s} (Сегодня)</b>\n\n{text}")
 
 
 @router.message(Command("tomorrow"))
 async def cmd_tomorrow(message: Message):
-    async with aiosqlite.connect(DB_PATH) as db:
-        async with db.execute(
-            "SELECT group_name FROM users WHERE user_id = ?",
-            (message.from_user.id,),
-        ) as cur:
-            row = await cur.fetchone()
-    if not row:
+    group = await _get_user_group(message.from_user.id)
+    if not group:
         return await message.answer("Укажи группу: /setgroup ...")
 
-    text = await get_today_schedule(row[0], offset=1)
-    await message.answer(f"Завтра\n\n{text}")
+    tomorrow = datetime.now() + timedelta(days=1)
+    date_s = tomorrow.strftime("%Y-%m-%d")
+    day_names = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
+    day_name = day_names[tomorrow.weekday()]
+    
+    text = await get_today_schedule(group, offset=1)
+    await message.answer(f"<b>{day_name} {date_s} (Завтра)</b>\n\n{text}")
 
 
-@router.message(Command("schedule"))
-async def schedule_command(message: types.Message):
-    args = message.get_args()
-    day_of_week = datetime.now().weekday()  # Default to today
+# Handlers for reply-keyboard buttons (text messages)
+@router.message(F.text == "Сегодня")
+async def msg_today(message: Message):
+    await cmd_today(message)
 
-    if args == "tomorrow":
-        day_of_week = (day_of_week + 1) % 7
-    elif args.isdigit():
-        day_of_week = int(args) % 7
 
-    group = "Example Group"  # Replace with user-specific group
+@router.message(F.text == "Завтра")
+async def msg_tomorrow(message: Message):
+    await cmd_tomorrow(message)
 
-    conn = sqlite3.connect("database.db")
-    cursor = conn.cursor()
-    cursor.execute(
-        "SELECT class_name, start_time FROM schedule WHERE group_name = ? AND day_of_week = ?",
-        (group, day_of_week),
-    )
-    rows = cursor.fetchall()
-    conn.close()
 
-    if rows:
-        schedule = "\n".join([f"{row[1]} - {row[0]}" for row in rows])
-        await message.answer(f"Расписание:\n{schedule}")
-    else:
-        await message.answer("На выбранный день занятий нет.")
+@router.message(F.text == "Неделя")
+async def msg_week(message: Message):
+    group = await _get_user_group(message.from_user.id)
+    if not group:
+        return await message.answer("Укажи группу: /setgroup ...")
+
+    # Build week overview starting from Monday of this week
+    week_start = _get_week_start_date()
+    texts = []
+    day_names = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
+    
+    for d in range(7):
+        current_date = week_start + timedelta(days=d)
+        date_s = current_date.strftime("%Y-%m-%d")
+        day_name = day_names[d]
+        
+        sched = await get_today_schedule(group, offset=0)
+        # Manually fetch schedule for the specific date instead of using offset
+        rows = await list_schedule_for_group(group, date_s)
+        replacements = await get_replacements_for_group_date(group, date_s)
+        
+        if not rows and not replacements:
+            sched_text = "Пар нет"
+        else:
+            schedule_map = {int(r[0]): (r[1], r[2] or "", r[3] or "", r[4] or "") for r in rows}
+            for pnum, (subj, teacher, room) in replacements.items():
+                schedule_map[int(pnum)] = ("", subj or "", teacher or "", room or "")
+            
+            lines = []
+            for n in sorted(schedule_map.keys()):
+                time_start, subj, teacher, room = schedule_map[n]
+                rep_mark = " (замена)" if n in replacements else ""
+                lines.append(
+                    f"{n} пара{rep_mark} • {time_start or '—'} • {subj or '—'}\n   {teacher or '—'} • {room or '—'}"
+                )
+            sched_text = "\n\n".join(lines)
+        
+        texts.append(f"<b>{day_name} {date_s}</b>\n{sched_text}")
+    
+    await message.answer("Неделя:\n\n" + "\n\n".join(texts))
