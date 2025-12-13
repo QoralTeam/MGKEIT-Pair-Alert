@@ -105,22 +105,16 @@ curator_keyboard = ReplyKeyboardMarkup(
 admin_keyboard = ReplyKeyboardMarkup(
     keyboard=[
         [
-            KeyboardButton(text="Сегодня"),
-            KeyboardButton(text="Завтра"),
-            KeyboardButton(text="Неделя"),
-        ],
-        [
                 KeyboardButton(text="Рассылка всем (в разработке)"),
                 KeyboardButton(text="Кураторам (в разработке)"),
                 KeyboardButton(text="Конкретной группе (в разработке)"),
         ],
         [
-            KeyboardButton(text="Изменить расписание"),
-            KeyboardButton(text="Добавить ссылку на занятия"),
-            KeyboardButton(text="Изменение времени обедов"),
+            KeyboardButton(text="Написать куратору"),
         ],
         [
             KeyboardButton(text="Админ-панель"),
+            KeyboardButton(text="Настройки"),
         ],
     ],
     resize_keyboard=True,
