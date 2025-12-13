@@ -333,3 +333,229 @@ async def list_users_by_role(role: str) -> list:
     # Deduplicate and sort
     results = sorted(set(results))
     return results
+
+
+async def get_users_in_group(group_name: str) -> list:
+    """Return list of user_ids belonging to a group."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT user_id FROM users WHERE group_name = ?", (group_name,)
+        ) as cur:
+            rows = await cur.fetchall()
+    return [r[0] for r in rows]
+
+
+async def get_user_group(user_id: int) -> str | None:
+    """Return stored group for a user or None."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT group_name FROM users WHERE user_id = ?", (user_id,)
+        ) as cur:
+            row = await cur.fetchone()
+    return row[0] if row and row[0] else None
+
+
+async def set_user_group(user_id: int, group_name: str) -> None:
+    """Set or update user's group."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            """
+            INSERT INTO users (user_id, group_name)
+            VALUES (?, ?)
+            ON CONFLICT(user_id) DO UPDATE SET group_name = excluded.group_name
+            """,
+            (user_id, group_name),
+        )
+        await db.commit()
+
+
+async def set_user_name(user_id: int, first_name: str = "", username: str = "") -> None:
+    """Set or update user's name info. Only updates if user exists."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        # Check if user exists first
+        cursor = await db.execute("SELECT user_id FROM users WHERE user_id = ?", (user_id,))
+        exists = await cursor.fetchone()
+        
+        if exists:
+            # Update existing user
+            await db.execute(
+                """
+                UPDATE users 
+                SET first_name = ?, username = ?
+                WHERE user_id = ?
+                """,
+                (first_name, username, user_id),
+            )
+        else:
+            # For new users, insert with default group_name
+            await db.execute(
+                """
+                INSERT INTO users (user_id, first_name, username, group_name)
+                VALUES (?, ?, ?, '')
+                """,
+                (user_id, first_name, username),
+            )
+        await db.commit()
+
+async def add_lunch(group_name: str, date: str, time_start: str, item: str, price: str, added_by: int) -> None:
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            """
+            INSERT INTO lunches (group_name, date, time_start, item, price, added_by, added_at)
+            VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+            """,
+            (group_name, date, time_start, item, price, added_by),
+        )
+        await db.commit()
+
+
+async def get_lunches_for_date(group_name: str, date: str) -> list:
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT time_start, item, price FROM lunches WHERE group_name = ? AND date = ? ORDER BY time_start",
+            (group_name, date),
+        ) as cur:
+            rows = await cur.fetchall()
+    return [(r[0], r[1], r[2]) for r in rows]
+
+
+async def add_pair_link(group_name: str, pair_number: int, url: str, added_by: int) -> None:
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            """
+            INSERT INTO pair_links (group_name, pair_number, url, added_by, added_at)
+            VALUES (?, ?, ?, ?, datetime('now'))
+            ON CONFLICT(group_name, pair_number) DO UPDATE SET
+                url=excluded.url,
+                added_by=excluded.added_by,
+                added_at=excluded.added_at
+            """,
+            (group_name, pair_number, url, added_by),
+        )
+        await db.commit()
+
+
+async def get_pair_links(group_name: str) -> list:
+    """Return list of (pair_number, url) for a group, ordered by pair_number."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT pair_number, url FROM pair_links WHERE group_name = ? ORDER BY pair_number",
+            (group_name,),
+        ) as cur:
+            rows = await cur.fetchall()
+    return [(int(r[0]), r[1]) for r in rows]
+
+
+async def clear_pair_links(group_name: str) -> None:
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("DELETE FROM pair_links WHERE group_name = ?", (group_name,))
+        await db.commit()
+
+
+async def get_all_pair_links() -> list:
+    """Return list of (group_name, pair_number, url) for all stored links."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT group_name, pair_number, url FROM pair_links ORDER BY group_name, pair_number"
+        ) as cur:
+            rows = await cur.fetchall()
+    return [(r[0], int(r[1]), r[2]) for r in rows]
+
+
+async def upsert_schedule_entry(
+    group_name: str,
+    date: str,
+    pair_number: int,
+    time_start: str,
+    time_end: str,
+    subject: str,
+    teacher: str | None,
+    room: str | None,
+    week_type: str = "both",
+) -> None:
+    """Insert or update an entry into `schedule_cache` (used by admins)."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            """
+            INSERT INTO schedule_cache (
+                group_name, date, pair_number, time_start, time_end, subject, teacher, room, week_type
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(group_name, date, pair_number) DO UPDATE SET
+                time_start=excluded.time_start,
+                time_end=excluded.time_end,
+                subject=excluded.subject,
+                teacher=excluded.teacher,
+                room=excluded.room,
+                week_type=excluded.week_type
+            """,
+            (
+                group_name,
+                date,
+                pair_number,
+                time_start,
+                time_end,
+                subject,
+                teacher or "",
+                room or "",
+                week_type,
+            ),
+        )
+        await db.commit()
+
+
+async def add_replacement(
+    group_name: str,
+    date: str,
+    pair_number: int,
+    subject: str,
+    teacher: str | None,
+    room: str | None,
+    created_by: int,
+) -> None:
+    """Add or replace a substitution for a specific group/date/pair."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            """
+            INSERT INTO replacements (
+                group_name, date, pair_number, subject, teacher, room, created_by, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
+            ON CONFLICT(group_name, date, pair_number) DO UPDATE SET
+                subject=excluded.subject,
+                teacher=excluded.teacher,
+                room=excluded.room,
+                created_by=excluded.created_by,
+                created_at=excluded.created_at
+            """,
+            (
+                group_name,
+                date,
+                pair_number,
+                subject,
+                teacher or "",
+                room or "",
+                created_by,
+            ),
+        )
+        await db.commit()
+
+
+async def list_schedule_for_group(group_name: str, date: str) -> list:
+    """Return schedule_cache rows for group/date ordered by pair_number."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT pair_number, time_start, time_end, subject, teacher, room, week_type FROM schedule_cache WHERE group_name = ? AND date = ? ORDER BY pair_number",
+            (group_name, date),
+        ) as cur:
+            rows = await cur.fetchall()
+            return rows
+
+
+async def get_replacements_for_group_date(group_name: str, date: str) -> dict:
+    """Return a mapping pair_number -> (subject, teacher, room) for replacements on a date."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT pair_number, subject, teacher, room FROM replacements WHERE group_name = ? AND date = ?",
+            (group_name, date),
+        ) as cur:
+            rows = await cur.fetchall()
+    return {int(r[0]): (r[1], r[2] or "", r[3] or "") for r in rows}
