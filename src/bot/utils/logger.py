@@ -1,12 +1,15 @@
 """Logging configuration for the bot.
 
 Setup logging with both file and console handlers.
-File logs are rotated daily and kept for 7 days.
+File logs are rotated by size (10MB) and up to 7 backups are kept.
 Console output goes to stdout (supervisor-friendly).
 """
 
 import logging
 import logging.handlers
+import os
+import time
+from collections import deque
 from pathlib import Path
 
 # Ensure logs directory exists
