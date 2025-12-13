@@ -131,7 +131,14 @@ admin_panel_keyboard = ReplyKeyboardMarkup(
         [
             KeyboardButton(text="Изменить расписание"),
             KeyboardButton(text="Добавить ссылку на занятия"),
+        ],
+        [
+            KeyboardButton(text="Добавить замену"),
             KeyboardButton(text="Изменение времени обедов"),
+        ],
+        [
+            KeyboardButton(text="Сменить роль"),
+            KeyboardButton(text="Показать роли"),
         ],
         [
             KeyboardButton(text="Назад"),
