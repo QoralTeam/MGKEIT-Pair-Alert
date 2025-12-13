@@ -47,6 +47,47 @@ console_handler.setLevel(logging.INFO)
 console_handler.setFormatter(formatter)
 logger.addHandler(console_handler)
 
+# Optional: restart-on-warning watchdog
+class _WarningRestartWatcher(logging.Handler):
+    def __init__(self, threshold: int, window_seconds: int):
+        super().__init__(level=logging.WARNING)
+        self.threshold = max(1, int(threshold))
+        self.window = max(1, int(window_seconds))
+        self._events = deque()
+
+    def emit(self, record: logging.LogRecord) -> None:
+        try:
+            now = time.time()
+            # store event
+            self._events.append(now)
+            # drop old events
+            cutoff = now - self.window
+            while self._events and self._events[0] < cutoff:
+                self._events.popleft()
+
+            if len(self._events) >= self.threshold:
+                # Escalate and exit so supervisor restarts the bot
+                try:
+                    logging.getLogger("mgkeit_bot").critical(
+                        "Warning threshold exceeded (%s in %ss). Exiting for supervisor restart...",
+                        self.threshold,
+                        self.window,
+                    )
+                except Exception:
+                    pass
+                # Immediately terminate process; supervisor will restart
+                os._exit(70)  # EX_SOFTWARE-like exit code
+        except Exception:
+            # Never raise from logging handler
+            pass
+
+# Enable watchdog via env vars (disabled by default)
+_warn_watchdog_enabled = os.getenv("WARNING_RESTART_ENABLED", "0").lower() in {"1", "true", "yes"}
+if _warn_watchdog_enabled:
+    threshold = int(os.getenv("WARNING_RESTART_THRESHOLD", "20"))  # warnings
+    window = int(os.getenv("WARNING_RESTART_WINDOW_SECONDS", "600"))  # 10 minutes
+    logger.addHandler(_WarningRestartWatcher(threshold, window))
+
 # Log startup
 logger.info("=" * 60)
 logger.info("MGKEIT Pair Alert Bot - Logging initialized")
