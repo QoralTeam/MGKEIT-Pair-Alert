@@ -37,6 +37,50 @@ student_keyboard = ReplyKeyboardMarkup(
     resize_keyboard=True,
 )
 
+# Keyboard for settings (reply buttons) - for students only (no password change)
+student_settings_keyboard = ReplyKeyboardMarkup(
+    keyboard=[
+        [KeyboardButton(text="Установить напоминание")],
+        [KeyboardButton(text="Снять напоминание")],
+        [KeyboardButton(text="Чётность недели")],
+        [KeyboardButton(text="Дни недели")],
+        [KeyboardButton(text="Изменить группу")],
+        [KeyboardButton(text="Изменить ФИО")],
+        [KeyboardButton(text="Назад")],
+    ],
+    resize_keyboard=True,
+)
+
+# Keyboard for settings (reply buttons) - for curators (with password change)
+curator_settings_keyboard = ReplyKeyboardMarkup(
+    keyboard=[
+        [KeyboardButton(text="Установить напоминание")],
+        [KeyboardButton(text="Снять напоминание")],
+        [KeyboardButton(text="Чётность недели")],
+        [KeyboardButton(text="Дни недели")],
+        [KeyboardButton(text="Изменить группу")],
+        [KeyboardButton(text="Изменить ФИО")],
+        [KeyboardButton(text="Настройка 2FA")],
+        [KeyboardButton(text="Сменить пароль")],
+        [KeyboardButton(text="Назад")],
+    ],
+    resize_keyboard=True,
+)
+
+# Legacy alias for backwards compatibility
+settings_keyboard = curator_settings_keyboard
+
+# Keyboard for settings (reply buttons) - for admins only
+admin_settings_keyboard = ReplyKeyboardMarkup(
+    keyboard=[
+        [KeyboardButton(text="Изменить ФИО")],
+        [KeyboardButton(text="Сменить пароль")],
+        [KeyboardButton(text="Настройка 2FA")],
+        [KeyboardButton(text="Назад")],
+    ],
+    resize_keyboard=True,
+)
+
 # Keyboard for curators
 curator_keyboard = ReplyKeyboardMarkup(
     keyboard=[
