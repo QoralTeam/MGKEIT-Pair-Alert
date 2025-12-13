@@ -8,19 +8,21 @@ The bot uses Python's built-in `logging` module for comprehensive logging that w
 - **Supervisor logs:** Configured via supervisor.conf for stdout/stderr capture
 
 ### Logging Features
-- ✅ **Console output** - Visible during direct runs and supervisor
-- ✅ **File rotation** - Automatic daily rotation, keeps 7 backups
-- ✅ **Structured format** - `[TIMESTAMP] LEVEL MODULE: MESSAGE`
-- ✅ **Error tracking** - Full stack traces for exceptions
-- ✅ **Job logging** - Sync, reminders, and scheduler events logged
+- ✅ **Console output** — Visible during direct runs and under supervisor
+- ✅ **File rotation** — Size-based rotation (10MB per file), keeps 7 backups
+- ✅ **Structured format** — `[TIMESTAMP] LEVEL MODULE: MESSAGE`
+- ✅ **Error tracking** — Full stack traces for exceptions
+- ✅ **Job logging** — Sync, reminders, and scheduler events logged
+- ✅ **Global error handler** — Catches unhandled handler errors, logs stack trace, sends user-friendly notice
 
-### Log Levels
-| Level | Color | Usage |
-|-------|-------|-------|
-| DEBUG | - | Detailed diagnostic info (low frequency) |
-| INFO | - | General informational messages (normal operation) |
-| WARNING | - | Warning messages (potential issues) |
-| ERROR | - | Error events with stack trace (failures) |
+### Log Levels & Policy
+| Level | Meaning | Bot behavior |
+|-------|---------|--------------|
+| DEBUG | Diagnostic, detailed internals | Written to file only (`bot.log`). No impact on runtime. |
+| INFO | Normal operation events | Printed to console and written to file. No impact on runtime. |
+| WARNING | Potential issues, degraded state | Bot keeps running. No restart by default. Optional auto-restart on frequent warnings (see below). |
+| ERROR | Errors handled by code | Global error handler logs stack trace and continues. Process does not crash. |
+| CRITICAL | Fatal conditions | Logged as critical. May exit process to trigger supervisor restart. |
 
 ### Sample Log Output
 ```
@@ -34,8 +36,13 @@ The bot uses Python's built-in `logging` module for comprehensive logging that w
 [2025-12-12 15:50:26] INFO     mgkeit_bot: Added sync job (interval: 60 minutes)
 [2025-12-12 15:50:26] INFO     mgkeit_bot: Added reminder job (interval: 1 minute)
 [2025-12-12 15:50:26] INFO     mgkeit_bot: Scheduler started
-[2025-12-12 15:50:26] INFO     mgkeit_bot: MGKEIT Pair Alert успешно запущен!
+[2025-12-12 15:50:26] INFO     mgkeit_bot: MGKEIT Pair Alert started successfully!
 ```
+
+## Error Handling
+
+- `global_error_handler` (`src/bot/main.py`) logs any unhandled exception from handlers with a stack trace and sends a generic error message back to the user/callback.
+- Scheduler jobs in `src/bot/scheduler/tasks.py` log start/end, warnings for missing data, and network failures; failures still keep the process alive (supervisor handles restarts on crash).
 
 ## Supervisor Integration
 
@@ -85,6 +92,29 @@ When configured with supervisor, the bot will:
 - ✅ Keep running indefinitely with auto-restart enabled
 - ✅ Log all activity to files with rotation
 
+### Optional: Restart on Frequent Warnings
+You can enable an automatic restart if too many WARNING events occur in a short time window (useful when warnings indicate a degraded state).
+
+Enable via environment variables:
+
+```bash
+# Enable warning watchdog
+WARNING_RESTART_ENABLED=1
+
+# Number of WARNINGs within the window to trigger restart
+WARNING_RESTART_THRESHOLD=20
+
+# Sliding window duration in seconds (default 600 = 10 minutes)
+WARNING_RESTART_WINDOW_SECONDS=600
+```
+
+How it works:
+- The logger tracks WARNING events within the configured sliding window.
+- If the count exceeds the threshold, it logs a CRITICAL message and exits with code 70.
+- Supervisor with `autorestart=true` will restart the bot.
+
+Note: a single WARNING does not trigger a restart. Only sustained bursts of warnings do.
+
 ## Logger Module
 
 The logger is implemented in `src/bot/utils/logger.py`:
@@ -92,6 +122,7 @@ The logger is implemented in `src/bot/utils/logger.py`:
 - Console output at INFO level for visibility
 - File output at DEBUG level for troubleshooting
 - Handlers: FileHandler (RotatingFileHandler) + StreamHandler
+- Optional handler: Warning‑restart watchdog (controlled by env vars, see above)
 
 ## Troubleshooting
 
