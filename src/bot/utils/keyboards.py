@@ -95,7 +95,8 @@ curator_keyboard = ReplyKeyboardMarkup(
             KeyboardButton(text="Написать группе"),
             KeyboardButton(text="Ссылки на пары"),
         ],
-        [KeyboardButton(text="Админу")],
+        [KeyboardButton(text="Ответить администратору")],
+        [KeyboardButton(text="Настройки"), KeyboardButton(text="Админу")],
     ],
     resize_keyboard=True,
 )
