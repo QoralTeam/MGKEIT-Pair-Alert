@@ -29,18 +29,35 @@ class Settings:
     CURATORS: list = []
 
     def __init__(self):
-        admins_raw = os.getenv("ADMINS", "")
-        curators_raw = os.getenv("CURATORS", "")
-        try:
-            self.ADMINS = [int(x) for x in admins_raw.split(",") if x.strip()]
-        except Exception:
-            self.ADMINS = []
-        try:
-            self.CURATORS = [
-                int(x) for x in curators_raw.split(",") if x.strip()
-            ]
-        except Exception:
-            self.CURATORS = []
+        # Support both singular and plural env var names for convenience.
+        admins_raw = os.getenv("ADMINS") or os.getenv("ADMIN") or ""
+        curators_raw = os.getenv("CURATORS") or os.getenv("CURATOR") or ""
+
+        def _parse_ids(raw: str) -> list:
+            if not raw:
+                return []
+            # normalize separators to commas, accept spaces/semicolons/newlines
+            cleaned = raw.replace("\n", ",").replace(";", ",").replace(" ", ",")
+            parts = [p.strip() for p in cleaned.split(",")]
+            res = []
+            for p in parts:
+                if not p:
+                    continue
+                try:
+                    res.append(int(p))
+                except Exception:
+                    # ignore non-integer values
+                    continue
+            return res
+
+        self.ADMINS = _parse_ids(admins_raw)
+        self.CURATORS = _parse_ids(curators_raw)
+        # Synchronization enabled flag (accepts 'True'/'False', case-insensitive)
+        sync_raw = os.getenv("SYNCHRONIZATION") or os.getenv("synchronization")
+        if sync_raw is None:
+            self.SYNCHRONIZATION = True
+        else:
+            self.SYNCHRONIZATION = str(sync_raw).strip().lower() in ("1", "true", "yes", "on")
 
 
 settings = Settings()
