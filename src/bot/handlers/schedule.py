@@ -20,8 +20,10 @@ async def get_today_schedule(group: str, offset: int = 0) -> str:
     if not rows and not replacements:
         return "Пар нет"
 
-    # Build map of pair_number -> row
-    schedule_map = {int(r[0]): (r[1], r[2] or "", r[3] or "", r[4] or "") for r in rows}
+    # Build map of pair_number -> row (pair_number, time_start, time_end, subject, teacher, room, week_type)
+    schedule_map = {
+        int(r[0]): (r[1], r[2], r[3] or "", r[4] or "", r[5] or "") for r in rows
+    }
 
     # Merge replacements (they override existing entries)
     for pnum, (subj, teacher, room) in replacements.items():
@@ -29,11 +31,12 @@ async def get_today_schedule(group: str, offset: int = 0) -> str:
 
     lines = []
     for n in sorted(schedule_map.keys()):
-        time_start, subj, teacher, room = schedule_map[n]
+        time_start, time_end, subj, teacher, room = schedule_map[n]
+        time_label = f"{time_start}–{time_end}" if time_end else (time_start or '—')
         # mark if this pair has replacement
         rep_mark = " (замена)" if n in replacements else ""
         lines.append(
-            f"{n} пара{rep_mark} • {time_start or '—'} • {subj or '—'}\n   {teacher or '—'} • {room or '—'}"
+            f"{n} пара{rep_mark} • {time_label} • {subj or '—'}\n   {teacher or '—'} • {room or '—'}"
         )
     return "\n\n".join(lines)
 
@@ -58,9 +61,10 @@ async def get_current_and_next_pair(group: str):
     for r in rows:
         pnum = int(r[0])
         t_start = r[1]
-        subj = r[2] or ""
-        teacher = r[3] or ""
-        room = r[4] or ""
+        t_end = r[2]
+        subj = r[3] or ""
+        teacher = r[4] or ""
+        room = r[5] or ""
         dt = await _parse_time(today, t_start)
         if not dt:
             continue
@@ -75,6 +79,7 @@ async def get_current_and_next_pair(group: str):
     current = None
     next_pair = None
     for pnum, dt, subj, teacher, room, is_rep in candidates:
+        # prefer parsed t_end if available, otherwise assume 90 minutes
         end_dt = dt + timedelta(minutes=90)
         if dt <= now < end_dt:
             current = {
@@ -96,41 +101,6 @@ async def get_current_and_next_pair(group: str):
             }
 
     return current, next_pair
-
-
-@router.message(Command("now"))
-async def cmd_now(message: Message):
-    group = await _get_user_group(message.from_user.id)
-    if not group:
-        return await message.answer("Укажи группу: /setgroup ...")
-
-    current, _ = await get_current_and_next_pair(group)
-    if not current:
-        return await message.answer("Сейчас пар нет.")
-
-    dt = current["time_start"].strftime("%H:%M")
-    rep = " (замена)" if current.get("is_replacement") else ""
-    await message.answer(
-        f"Сейчас {current['pair_number']} пара{rep} • {dt} • {current['subject']}\n{current['teacher'] or '—'} • {current['room'] or '—'}"
-    )
-
-
-@router.message(Command("next"))
-async def cmd_next(message: Message):
-    group = await _get_user_group(message.from_user.id)
-    if not group:
-        return await message.answer("Укажи группу: /setgroup ...")
-
-    _, nxt = await get_current_and_next_pair(group)
-    if not nxt:
-        return await message.answer("Ближайшая пара не найдена.")
-
-    mins = int((nxt["time_start"] - datetime.now()).total_seconds() // 60)
-    dt = nxt["time_start"].strftime("%H:%M")
-    rep = " (замена)" if nxt.get("is_replacement") else ""
-    await message.answer(
-        f"Следующая: {nxt['pair_number']} пара{rep} • {dt} • {nxt['subject']}\nчерез {mins} мин • {nxt['teacher'] or '—'} • {nxt['room'] or '—'}"
-    )
 
 
 @router.message(Command("week"))
@@ -232,16 +202,17 @@ async def msg_week(message: Message):
         if not rows and not replacements:
             sched_text = "Пар нет"
         else:
-            schedule_map = {int(r[0]): (r[1], r[2] or "", r[3] or "", r[4] or "") for r in rows}
+            schedule_map = {int(r[0]): (r[1], r[2], r[3] or "", r[4] or "", r[5] or "") for r in rows}
             for pnum, (subj, teacher, room) in replacements.items():
-                schedule_map[int(pnum)] = ("", subj or "", teacher or "", room or "")
-            
+                schedule_map[int(pnum)] = ("", "", subj or "", teacher or "", room or "")
+
             lines = []
             for n in sorted(schedule_map.keys()):
-                time_start, subj, teacher, room = schedule_map[n]
+                time_start, time_end, subj, teacher, room = schedule_map[n]
+                time_label = f"{time_start}–{time_end}" if time_end else (time_start or '—')
                 rep_mark = " (замена)" if n in replacements else ""
                 lines.append(
-                    f"{n} пара{rep_mark} • {time_start or '—'} • {subj or '—'}\n   {teacher or '—'} • {room or '—'}"
+                    f"{n} пара{rep_mark} • {time_label} • {subj or '—'}\n   {teacher or '—'} • {room or '—'}"
                 )
             sched_text = "\n\n".join(lines)
         
