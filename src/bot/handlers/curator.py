@@ -438,8 +438,11 @@ async def direct_message_admin_confirm(message: Message, state: FSMContext):
     """Confirm and send direct message to admin."""
     if message.text == "Отмена":
         await state.clear()
-        from bot.utils.keyboards import curator_keyboard
-        await message.answer("Отменено.", reply_markup=curator_keyboard)
+        role = await get_user_role(message.from_user.id)
+        is_admin = role == "admin" or message.from_user.id in settings.ADMINS
+        from bot.utils.keyboards import curator_keyboard, admin_keyboard
+        kb = admin_keyboard if is_admin else curator_keyboard
+        await message.answer("Отменено.", reply_markup=kb)
         return
     
     if message.text != "Отправить":
