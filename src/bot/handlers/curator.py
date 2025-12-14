@@ -66,11 +66,8 @@ async def msg_to_group_button(message: Message, state: FSMContext):
         return await message.answer("Доступ только для кураторов и админов.")
     await state.clear()
     await state.set_state(ToGroupStates.group)
-    cancel_kb = ReplyKeyboardMarkup(
-        keyboard=[[KeyboardButton(text="Отмена")]],
-        resize_keyboard=True,
-    )
-    await message.answer("Укажите группу (например: 1ОЗИП-1-11-25):", reply_markup=cancel_kb)
+    kb = get_campus_selection_keyboard()
+    await message.answer("Выберите кампус:", reply_markup=kb)
 
 
 @router.message(ToGroupStates.group)
@@ -143,11 +140,8 @@ async def cmd_link_start(message: Message, state: FSMContext):
         return await message.answer("Доступ только для кураторов/админов.")
     await state.clear()
     await state.set_state(LinkAddStates.group)
-    cancel_kb = ReplyKeyboardMarkup(
-        keyboard=[[KeyboardButton(text="Отмена")]],
-        resize_keyboard=True,
-    )
-    await message.answer("Введите название группы:", reply_markup=cancel_kb)
+    kb = get_campus_selection_keyboard()
+    await message.answer("Выберите кампус:", reply_markup=kb)
 
 
 @router.message(LinkAddStates.group)
@@ -232,6 +226,28 @@ async def link_confirm(message: Message, state: FSMContext):
         )
     except Exception as e:
         await message.answer(f"Ошибка при добавлении ссылки: {e}", reply_markup=curator_keyboard)
+
+
+@router.message(F.text == "Добавить замену")
+async def cmd_replace_start(message: Message, state: FSMContext):
+    """Initiate replacement addition with group dropdown."""
+    if not await _ensure_curator(message.from_user.id):
+        return await message.answer("Доступ только для кураторов/админов.")
+    await state.clear()
+    await state.set_state(ReplaceStates.group)
+    kb = get_campus_selection_keyboard()
+    await message.answer("Выберите кампус:", reply_markup=kb)
+
+
+@router.message(F.text == "Очистить ссылки")
+async def cmd_clear_links_start(message: Message, state: FSMContext):
+    """Initiate link clearing with group dropdown."""
+    if not await _ensure_curator(message.from_user.id):
+        return await message.answer("Доступ только для кураторов/админов.")
+    await state.clear()
+    await state.set_state(ClearLinksStates.waiting_group)
+    kb = get_campus_selection_keyboard()
+    await message.answer("Выберите кампус:", reply_markup=kb)
 
 
 @router.message(ClearLinksStates.waiting_group)
@@ -432,3 +448,68 @@ async def direct_message_admin_confirm(message: Message, state: FSMContext):
     except Exception as exc:
         await message.answer(f"Ошибка при отправке сообщения: {exc}")
         logger.error(f"Error sending direct message to admin {target_admin_id}: {exc}")
+
+
+# Callback handlers for group selection in curator operations
+@router.callback_query(lambda c: c.data.startswith("campus:") and c.message.text and "выбор" in c.message.text.lower())
+async def cb_campus_curator(callback: CallbackQuery, state: FSMContext):
+    """Handle campus selection in curator group selection flows."""
+    campus = callback.data.split(":", 1)[1]
+    await callback.answer()
+    await state.update_data(selected_campus=campus)
+    kb = get_group_selection_keyboard(campus, page=0)
+    await callback.message.edit_text(f"Выберите группу в кампусе {campus}:", reply_markup=kb)
+
+
+@router.callback_query(lambda c: c.data.startswith("page:") and c.message.text and "выбор" in c.message.text.lower())
+async def cb_pagination_curator(callback: CallbackQuery, state: FSMContext):
+    """Handle pagination in curator group selection."""
+    parts = callback.data.split(":")
+    campus = parts[1]
+    page = int(parts[2])
+    await callback.answer()
+    kb = get_group_selection_keyboard(campus, page=page)
+    await callback.message.edit_reply_markup(reply_markup=kb)
+
+
+@router.callback_query(lambda c: c.data == "select_campus" and c.message.text and "выбор" in c.message.text.lower())
+async def cb_back_campus_curator(callback: CallbackQuery, state: FSMContext):
+    """Back to campus selection in curator flow."""
+    await callback.answer()
+    kb = get_campus_selection_keyboard()
+    await callback.message.edit_text("Выберите кампус:", reply_markup=kb)
+
+
+@router.callback_query(lambda c: c.data.startswith("group:") and c.message.text and "выбор" in c.message.text.lower())
+async def cb_group_curator(callback: CallbackQuery, state: FSMContext):
+    """Handle group selection in curator operations (links, replacements)."""
+    group = callback.data.split(":", 1)[1]
+    await callback.answer()
+    
+    # Update FSM data with selected group
+    await state.update_data(group=group)
+    
+    # Get current FSM state to determine what flow we're in
+    current_state = await state.get_state()
+    
+    if current_state == LinkAddStates.group:
+        await state.set_state(LinkAddStates.pair)
+        await callback.message.edit_text(f"Группа: {group}\n\nВведите номер пары (число):")
+    elif current_state == ReplaceStates.group:
+        await state.set_state(ReplaceStates.date)
+        await callback.message.edit_text(f"Группа: {group}\n\nВведите дату (YYYY-MM-DD):")
+    elif current_state == ClearLinksStates.waiting_group:
+        await callback.message.edit_text(f"Группа: {group}\n\nОчищаю ссылки...")
+        try:
+            await clear_pair_links(group)
+            await state.clear()
+            await callback.message.edit_text(f"✓ Ссылки для группы {group} удалены (если были).")
+        except Exception as exc:
+            await state.clear()
+            await callback.message.edit_text(f"Ошибка при удалении ссылок для {group}: {exc}")
+    elif current_state == ToGroupStates.group:
+        await state.set_state(ToGroupStates.text)
+        await callback.message.edit_text(f"Группа: {group}\n\nНапишите сообщение для отправки группе:")
+    else:
+        # Unknown flow, just show the group
+        await callback.message.edit_text(f"Выбрана группа: {group}")
