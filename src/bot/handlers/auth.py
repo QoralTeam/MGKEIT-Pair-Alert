@@ -301,7 +301,7 @@ async def process_new_password(message: Message, state: FSMContext):
     await state.set_state(AuthStates.waiting_confirm_password)
     logger.info(f"User {user_id} entered valid password, waiting for confirmation")
     await message.answer(
-        f"Пароль: {new_password}\n\n"
+        "✓ Пароль принят.\n\n"
         "Подтвердите новый пароль (введите его ещё раз):"
     )
 
