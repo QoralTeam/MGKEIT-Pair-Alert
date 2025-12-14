@@ -103,7 +103,7 @@ async def _ensure_admin(user_id: int) -> bool:
     return role == "admin"
 
 
-@router.message(Command("admin"))
+@router.message(F.text == "Админ-панель")
 async def msg_admin_panel_button(message: Message):
     """Reply-keyboard button to open the admin panel."""
     user_id = message.from_user.id
