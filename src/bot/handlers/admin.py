@@ -1405,7 +1405,8 @@ async def direct_message_curator_confirm(message: Message, state: FSMContext):
         
         logger.info(f"Admin {admin_id} sent direct message to curator {target_curator_id}")
     except Exception as exc:
-        await message.answer(f"Ошибка при отправке сообщения: {exc}")
+        await state.clear()
+        await message.answer(f"Ошибка при отправке сообщения: {exc}", reply_markup=admin_keyboard)
         logger.error(f"Error sending direct message to curator {target_curator_id}: {exc}")
 
 
