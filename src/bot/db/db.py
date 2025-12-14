@@ -171,6 +171,31 @@ async def init_db() -> None:
                 await db.execute("ALTER TABLE users ADD COLUMN last_auth_time REAL DEFAULT 0")
                 await db.commit()
             
+            # Ensure pair_links has a date column for storing specific dates
+            col_names = await _get_column_names(db, "pair_links")
+            if "date" not in col_names:
+                await db.execute("ALTER TABLE pair_links ADD COLUMN date TEXT DEFAULT '2000-01-01'")
+                await db.commit()
+                # Recreate the table with updated PRIMARY KEY to include date
+                await db.execute("""
+                    CREATE TABLE pair_links_new (
+                        group_name TEXT,
+                        date TEXT,
+                        pair_number INTEGER,
+                        url TEXT,
+                        added_by INTEGER,
+                        added_at TEXT,
+                        PRIMARY KEY (group_name, date, pair_number)
+                    )
+                """)
+                await db.execute("""
+                    INSERT INTO pair_links_new (group_name, date, pair_number, url, added_by, added_at)
+                    SELECT group_name, date, pair_number, url, added_by, added_at FROM pair_links
+                """)
+                await db.execute("DROP TABLE pair_links")
+                await db.execute("ALTER TABLE pair_links_new RENAME TO pair_links")
+                await db.commit()
+            
             # Initialize passwords for admins and curators from .env
             await _initialize_env_passwords(db)
 
@@ -419,30 +444,40 @@ async def get_lunches_for_date(group_name: str, date: str) -> list:
     return [(r[0], r[1], r[2]) for r in rows]
 
 
-async def add_pair_link(group_name: str, pair_number: int, url: str, added_by: int) -> None:
+async def add_pair_link(group_name: str, date: str, pair_number: int, url: str, added_by: int) -> None:
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute(
             """
-            INSERT INTO pair_links (group_name, pair_number, url, added_by, added_at)
-            VALUES (?, ?, ?, ?, datetime('now'))
-            ON CONFLICT(group_name, pair_number) DO UPDATE SET
+            INSERT INTO pair_links (group_name, date, pair_number, url, added_by, added_at)
+            VALUES (?, ?, ?, ?, ?, datetime('now'))
+            ON CONFLICT(group_name, date, pair_number) DO UPDATE SET
                 url=excluded.url,
                 added_by=excluded.added_by,
                 added_at=excluded.added_at
             """,
-            (group_name, pair_number, url, added_by),
+            (group_name, date, pair_number, url, added_by),
         )
         await db.commit()
 
 
-async def get_pair_links(group_name: str) -> list:
-    """Return list of (pair_number, url) for a group, ordered by pair_number."""
+async def get_pair_links(group_name: str, date: str = None) -> list:
+    """Return list of (pair_number, url) for a group on a specific date, ordered by pair_number.
+    If date is None, return all links (for backwards compatibility)."""
     async with aiosqlite.connect(DB_PATH) as db:
-        async with db.execute(
-            "SELECT pair_number, url FROM pair_links WHERE group_name = ? ORDER BY pair_number",
-            (group_name,),
-        ) as cur:
-            rows = await cur.fetchall()
+        if date is None:
+            # Backwards compatibility: return all links without date filter
+            async with db.execute(
+                "SELECT pair_number, url FROM pair_links WHERE group_name = ? ORDER BY pair_number",
+                (group_name,),
+            ) as cur:
+                rows = await cur.fetchall()
+        else:
+            # Filter by specific date
+            async with db.execute(
+                "SELECT pair_number, url FROM pair_links WHERE group_name = ? AND date = ? ORDER BY pair_number",
+                (group_name, date),
+            ) as cur:
+                rows = await cur.fetchall()
     return [(int(r[0]), r[1]) for r in rows]
 
 

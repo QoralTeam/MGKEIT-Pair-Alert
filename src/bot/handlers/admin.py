@@ -69,6 +69,7 @@ class AdminReplacementStates(StatesGroup):
 
 class AdminLinkStates(StatesGroup):
     waiting_group = State()
+    waiting_date = State()
     waiting_pair = State()
     waiting_url = State()
 
@@ -863,6 +864,30 @@ async def admin_link_group(message: Message, state: FSMContext):
     if not group:
         return await message.answer("Группа не может быть пустой. Попробуйте снова или отмените.")
     await state.update_data(group=group)
+    await state.set_state(AdminLinkStates.waiting_date)
+    await message.answer(
+        "Введите дату в формате ГГГГ-ММ-ДД:",
+        reply_markup=ReplyKeyboardMarkup(
+            keyboard=[[KeyboardButton(text="Отмена")]],
+            resize_keyboard=True,
+        ),
+    )
+
+
+@router.message(AdminLinkStates.waiting_date)
+async def admin_link_date(message: Message, state: FSMContext):
+    if message.text == "Отмена":
+        await state.clear()
+        await message.answer("Отменено. Возвращаюсь в админ-панель.", reply_markup=admin_panel_keyboard)
+        return
+    date_s = message.text.strip()
+    try:
+        # validate date format
+        from datetime import date as _date
+        _ = _date.fromisoformat(date_s)
+    except Exception:
+        return await message.answer("Неверный формат даты. Используй ГГГГ-ММ-ДД.")
+    await state.update_data(date=date_s)
     await state.set_state(AdminLinkStates.waiting_pair)
     await message.answer(
         "Введите номер пары (целое число):",
@@ -906,14 +931,16 @@ async def admin_link_url(message: Message, state: FSMContext):
     
     data = await state.get_data()
     group = data.get("group")
+    date_s = data.get("date")
     pair_number = data.get("pair")
     
     try:
-        await add_pair_link(group, pair_number, url, message.from_user.id)
+        await add_pair_link(group, date_s, pair_number, url, message.from_user.id)
         await state.clear()
         await message.answer(
             f"✓ Ссылка на пару добавлена:\n"
             f"Группа: {group}\n"
+            f"Дата: {date_s}\n"
             f"Номер пары: {pair_number}\n"
             f"URL: {url}",
             reply_markup=admin_panel_keyboard,
@@ -1466,8 +1493,8 @@ async def cb_group_admin(callback: CallbackQuery, state: FSMContext):
         await state.set_state(AdminReplacementStates.waiting_date)
         await callback.message.edit_text(f"Группа: {group}\n\nВведите дату (YYYY-MM-DD):")
     elif current_state == AdminLinkStates.waiting_group:
-        await state.set_state(AdminLinkStates.waiting_pair)
-        await callback.message.edit_text(f"Группа: {group}\n\nВведите номер пары (число):")
+        await state.set_state(AdminLinkStates.waiting_date)
+        await callback.message.edit_text(f"Группа: {group}\n\nВведите дату (YYYY-MM-DD):")
     elif current_state == AdminLunchStates.waiting_group:
         await state.set_state(AdminLunchStates.waiting_start_time)
         await callback.message.edit_text(f"Группа: {group}\n\nВведите время начала обеда (HH:MM):")

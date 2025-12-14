@@ -35,6 +35,7 @@ class DirectMessageStates(StatesGroup):
 
 class LinkAddStates(StatesGroup):
     group = State()
+    date = State()
     pair = State()
     url = State()
     confirm = State()
@@ -152,6 +153,29 @@ async def link_group(message: Message, state: FSMContext):
         await message.answer("Отменено.", reply_markup=curator_keyboard)
         return
     await state.update_data(group=message.text.strip())
+    await state.set_state(LinkAddStates.date)
+    cancel_kb = ReplyKeyboardMarkup(
+        keyboard=[[KeyboardButton(text="Отмена")]],
+        resize_keyboard=True,
+    )
+    await message.answer("Введите дату в формате ГГГГ-ММ-ДД:", reply_markup=cancel_kb)
+
+
+@router.message(LinkAddStates.date)
+async def link_date(message: Message, state: FSMContext):
+    if message.text == "Отмена":
+        await state.clear()
+        from bot.utils.keyboards import curator_keyboard
+        await message.answer("Отменено.", reply_markup=curator_keyboard)
+        return
+    date_s = message.text.strip()
+    try:
+        # validate date format
+        from datetime import date as _date
+        _ = _date.fromisoformat(date_s)
+    except Exception:
+        return await message.answer("Неверный формат даты. Используй ГГГГ-ММ-ДД.")
+    await state.update_data(date=date_s)
     await state.set_state(LinkAddStates.pair)
     cancel_kb = ReplyKeyboardMarkup(
         keyboard=[[KeyboardButton(text="Отмена")]],
@@ -200,7 +224,7 @@ async def link_url(message: Message, state: FSMContext):
         resize_keyboard=True,
     )
     await message.answer(
-        f"Добавить ссылку для {data['group']} {data['pair']} пары?\n{data['url']}\n\nНажмите 'Да' для подтверждения.",
+        f"Добавить ссылку для группы {data['group']} на дату {data['date']} на {data['pair']} пару?\n{data['url']}\n\nНажмите 'Да' для подтверждения.",
         reply_markup=confirm_kb
     )
 
@@ -215,11 +239,12 @@ async def link_confirm(message: Message, state: FSMContext):
     
     data = await state.get_data()
     try:
-        await add_pair_link(data["group"], int(data["pair"]), data["url"], message.from_user.id)
+        await add_pair_link(data["group"], data["date"], int(data["pair"]), data["url"], message.from_user.id)
         await state.clear()
         await message.answer(
             f"✓ Ссылка на пару добавлена:\n"
             f"Группа: {data['group']}\n"
+            f"Дата: {data['date']}\n"
             f"Номер пары: {data['pair']}\n"
             f"URL: {data['url']}",
             reply_markup=curator_keyboard
