@@ -15,6 +15,7 @@ from bot.db.db import (
 from bot.utils.logger import logger
 from bot.utils.helpers import get_campus_selection_keyboard, get_group_selection_keyboard, ALL_GROUPS
 from bot.utils.keyboards import curator_keyboard
+from bot.config import settings
 
 router = Router(name="curator")
 
@@ -343,7 +344,6 @@ async def direct_message_admin_id(message: Message, state: FSMContext):
         return await message.answer("ID должен быть числом. Попробуйте снова:")
     
     # Verify admin exists in .env
-    from bot.config import settings
     if admin_id not in (settings.ADMINS or []):
         return await message.answer(f"Администратор с ID {admin_id} не найден. Попробуйте снова:")
     
