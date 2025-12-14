@@ -1,6 +1,6 @@
 from aiogram import Router, F
 from aiogram.filters import Command
-from aiogram.types import Message, KeyboardButton, ReplyKeyboardMarkup
+from aiogram.types import Message, KeyboardButton, ReplyKeyboardMarkup, CallbackQuery
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 
@@ -13,6 +13,8 @@ from bot.db.db import (
     get_user_role,
 )
 from bot.utils.logger import logger
+from bot.utils.helpers import get_campus_selection_keyboard, get_group_selection_keyboard, ALL_GROUPS
+from bot.utils.keyboards import curator_keyboard
 
 router = Router(name="curator")
 
