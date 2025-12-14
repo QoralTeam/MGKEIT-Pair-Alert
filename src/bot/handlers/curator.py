@@ -538,3 +538,4 @@ async def cb_group_curator(callback: CallbackQuery, state: FSMContext):
     else:
         # Unknown flow, just show the group
         await callback.message.edit_text(f"Выбрана группа: {group}")
+

@@ -130,7 +130,7 @@ async def msg_admin_add_replacement(message: Message, state: FSMContext):
     await state.clear()
     await state.set_state(AdminReplacementStates.waiting_group)
     kb = get_campus_selection_keyboard()
-    await message.answer("Выберите кампус:", reply_markup=kb)
+    await message.answer("Выбор кампуса:", reply_markup=kb)
 
 
 @router.message(F.text == "Добавить ссылку на занятия")
@@ -142,7 +142,7 @@ async def msg_admin_add_link_msg(message: Message, state: FSMContext):
     await state.clear()
     await state.set_state(AdminLinkStates.waiting_group)
     kb = get_campus_selection_keyboard()
-    await message.answer("Выберите кампус:", reply_markup=kb)
+    await message.answer("Выбор кампуса:", reply_markup=kb)
 
 
 @router.message(F.text == "Изменение времени обедов")
@@ -154,7 +154,7 @@ async def msg_admin_change_lunch_time(message: Message, state: FSMContext):
     await state.clear()
     await state.set_state(AdminLunchStates.waiting_group)
     kb = get_campus_selection_keyboard()
-    await message.answer("Выберите кампус:", reply_markup=kb)
+    await message.answer("Выбор кампуса:", reply_markup=kb)
 
 
 @router.message(F.text == "Статистика")
@@ -646,6 +646,16 @@ async def cb_admin_add_schedule(query: CallbackQuery, state: FSMContext):
     await query.answer("Раздел в разработке", show_alert=True)
 
 
+@router.message(F.text == "Добавить расписание")
+async def msg_admin_add_schedule(message: Message, state: FSMContext):
+    if not await _ensure_admin(message.from_user.id):
+        return await message.answer("Только для админов.")
+    await state.clear()
+    await state.set_state(AdminScheduleStates.waiting_group)
+    kb = get_campus_selection_keyboard()
+    await message.answer("Выбор кампуса:", reply_markup=kb)
+
+
 @router.message(F.text == "Изменить расписание")
 async def msg_admin_edit_schedule(message: Message, state: FSMContext):
     if not await _ensure_admin(message.from_user.id):
@@ -653,7 +663,7 @@ async def msg_admin_edit_schedule(message: Message, state: FSMContext):
     await state.clear()
     await state.set_state(AdminScheduleStates.waiting_group)
     kb = get_campus_selection_keyboard()
-    await message.answer("Выберите кампус:", reply_markup=kb)
+    await message.answer("Выбор кампуса:", reply_markup=kb)
 
 
 @router.message(AdminScheduleStates.waiting_group)
@@ -1577,7 +1587,7 @@ async def cb_back_campus_admin(callback: CallbackQuery, state: FSMContext):
     """Back to campus selection in admin flow."""
     await callback.answer()
     kb = get_campus_selection_keyboard()
-    await callback.message.edit_text("Выберите кампус:", reply_markup=kb)
+    await callback.message.edit_text("Выбор кампуса:", reply_markup=kb)
 
 
 @router.callback_query(lambda c: c.data.startswith("group:") and c.message.text and "выбор" in c.message.text.lower())
