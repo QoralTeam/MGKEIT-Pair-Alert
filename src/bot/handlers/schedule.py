@@ -127,12 +127,6 @@ def _get_week_start_date(date: datetime = None) -> datetime:
     return date - timedelta(days=days_since_monday)
 
 
-
-    
-    text = await get_today_schedule(group, offset=1)
-    await message.answer(f"<b>{day_name} {date_s} (Завтра)</b>\n\n{text}")
-
-
 # Handlers for reply-keyboard buttons (text messages)
 @router.message(F.text == "Сегодня")
 async def msg_today(message: Message):
