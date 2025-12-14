@@ -209,3 +209,47 @@ async def msg_week(message: Message):
         texts.append(f"<b>{day_name} {date_s}</b>\n{sched_text}")
     
     await message.answer("Неделя:\n\n" + "\n\n".join(texts))
+
+
+@router.message(F.text == "Сейчас")
+async def msg_current_pair(message: Message):
+    """Show current pair."""
+    group = await _get_user_group(message.from_user.id)
+    if not group:
+        return await message.answer("Укажи группу: /setgroup ...")
+    
+    current, next_pair = await get_current_and_next_pair(group)
+    
+    if current:
+        msg = (
+            f"<b>📚 Текущая пара:</b>\n"
+            f"{current['pair_number']} пара • {current['time_start'].strftime('%H:%M')}\n"
+            f"{current['subject']}\n"
+            f"{current['teacher']} • {current['room']}"
+        )
+    else:
+        msg = "<b>📚 Текущая пара:</b>\nПар нет или день закончился."
+    
+    await message.answer(msg)
+
+
+@router.message(F.text == "Следующая пара")
+async def msg_next_pair(message: Message):
+    """Show next pair."""
+    group = await _get_user_group(message.from_user.id)
+    if not group:
+        return await message.answer("Укажи группу: /setgroup ...")
+    
+    current, next_pair = await get_current_and_next_pair(group)
+    
+    if next_pair:
+        msg = (
+            f"<b>🔵 Следующая пара:</b>\n"
+            f"{next_pair['pair_number']} пара • {next_pair['time_start'].strftime('%H:%M')}\n"
+            f"{next_pair['subject']}\n"
+            f"{next_pair['teacher']} • {next_pair['room']}"
+        )
+    else:
+        msg = "<b>🔵 Следующая пара:</b>\nПар нет."
+    
+    await message.answer(msg)
