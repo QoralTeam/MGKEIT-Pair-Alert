@@ -136,17 +136,7 @@ async def cmd_start(message: Message, state: FSMContext):
         await message.answer("Выбери действие:", reply_markup=kb)
 
 
-@router.message(Command("setgroup"))
-async def cmd_setgroup(message: Message):
-    """Deprecated: use inline 'Добавить группу' button or Настройки instead."""
-    await message.answer("Используйте кнопку 'Добавить группу' или 'Настройки' на клавиатуре.")
 
-
-@router.message(Command("start"))
-async def start_command(message: types.Message):
-    # Deprecated: CommandStart() decorator handles /start now.
-    # This duplicate handler is kept for backwards compatibility but should not be needed.
-    await cmd_start(message)
 
 
 async def _is_admin(user_id: int) -> bool:

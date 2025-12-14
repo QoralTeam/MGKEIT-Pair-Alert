@@ -41,12 +41,6 @@ class SettingsRenameStates(StatesGroup):
 router = Router(name="settings")
 
 
-@router.message(Command("settings"))
-async def cmd_settings(message: Message):
-    """Deprecated: use 'Настройки' button from reply keyboard instead."""
-    await message.answer("Используйте кнопку 'Настройки' на клавиатуре.")
-
-
 @router.message(F.text == "Настройки")
 async def msg_settings(message: Message):
     # Check if user is admin or curator

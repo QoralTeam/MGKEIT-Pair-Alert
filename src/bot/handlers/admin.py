@@ -102,32 +102,14 @@ async def _ensure_admin(user_id: int) -> bool:
     return role == "admin"
 
 
-@router.message(Command("broadcast"))
-async def cmd_broadcast_start(message: Message, state: FSMContext):
-    user_id = message.from_user.id
-    if not await _ensure_admin(user_id):
-        return await message.answer("Только для админов.")
-    
-    await state.clear()
-    await state.set_state(BroadcastStates.text)
-    await message.answer("Напиши текст рассылки:")
-
-
 @router.message(Command("admin"))
-async def cmd_admin_panel(message: Message):
+async def msg_admin_panel_button(message: Message):
+    """Reply-keyboard button to open the admin panel."""
     user_id = message.from_user.id
     if not await _ensure_admin(user_id):
         return await message.answer("Только для админов.")
     
-    # Open the admin-panel reply keyboard (buttons under input line)
     await message.answer("Админ-панель:", reply_markup=admin_panel_keyboard)
-
-
-@router.message(F.text == "Админ-панель")
-async def msg_admin_panel_button(message: Message):
-    """Рeply-keyboard button to open the inline admin panel (same as /admin)."""
-    # Reuse existing command handler
-    await cmd_admin_panel(message)
 
 
 @router.message(F.text == "Добавить замену")
@@ -292,7 +274,7 @@ async def admin_role_choice(message: Message, state: FSMContext):
         logger.error(f"Error changing role for user {user_id}: {exc}")
 
 
-@router.message(F.text == "Рассылка всем (в разработке)")
+@router.message(F.text == "Рассылка всем")
 async def msg_admin_broadcast_all(message: Message, state: FSMContext):
     """Handle 'Broadcast to all' button from admin keyboard."""
     if not await _ensure_admin(message.from_user.id):
@@ -307,7 +289,7 @@ async def msg_admin_broadcast_all(message: Message, state: FSMContext):
     await message.answer("Напишите текст сообщения для рассылки всем:", reply_markup=cancel_kb)
 
 
-@router.message(F.text == "Кураторам (в разработке)")
+@router.message(F.text == "Кураторам")
 async def msg_admin_broadcast_curators(message: Message, state: FSMContext):
     """Handle 'Broadcast to curators' button from admin keyboard."""
     if not await _ensure_admin(message.from_user.id):
@@ -322,7 +304,7 @@ async def msg_admin_broadcast_curators(message: Message, state: FSMContext):
     await message.answer("Напишите текст сообщения для рассылки кураторам:", reply_markup=cancel_kb)
 
 
-@router.message(F.text == "Конкретной группе (в разработке)")
+@router.message(F.text == "Конкретной группе")
 async def msg_admin_broadcast_group(message: Message, state: FSMContext):
     """Handle 'Broadcast to specific group' button from admin keyboard."""
     if not await _ensure_admin(message.from_user.id):
@@ -1453,38 +1435,5 @@ async def cmd_to_group_admin(message: Message):
     return await message.answer("Не распознан формат команды.")
 
 
-@router.message(Command("stats"))
-async def cmd_stats(message: Message):
-    if not await _ensure_admin(message.from_user.id):
-        return await message.answer("Только для админов.")
-    async with aiosqlite.connect(DB_PATH) as db:
-        async with db.execute("SELECT COUNT(*) FROM users") as cur:
-            total = (await cur.fetchone())[0]
-        async with db.execute("SELECT COUNT(*) FROM users WHERE role = 'student'") as cur:
-            students = (await cur.fetchone())[0]
-        async with db.execute("SELECT COUNT(*) FROM users WHERE role = 'curator'") as cur:
-            curators = (await cur.fetchone())[0]
-    admins_env = 0
-    try:
-        admins_env = len(settings.ADMINS or [])
-    except Exception:
-        admins_env = 0
-    await message.answer(
-        f"Пользователей всего: {total}\nСтудентов: {students}\nКураторов (в БД): {curators}\nАдминов (env): {admins_env}"
-    )
-
-
-@router.message(Command("manual_sync"))
-async def cmd_manual_sync(message: Message):
-    if not await _ensure_admin(message.from_user.id):
-        return await message.answer("Только для админов.")
-    await message.answer("Запускаю синхронизацию расписаний...")
-    try:
-        # schedule immediate sync in background
-        import asyncio
-
-        asyncio.create_task(scheduler_tasks.sync_all_groups())
-        await message.answer("Синхронизация запущена.")
-    except Exception as exc:
-        await message.answer(f"Ошибка запуска синхронизации: {exc}")
+# Commands removed - use buttons
 

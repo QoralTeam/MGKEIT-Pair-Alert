@@ -103,17 +103,7 @@ async def get_current_and_next_pair(group: str):
     return current, next_pair
 
 
-@router.message(Command("week"))
-async def cmd_week(message: Message):
-    # reuse msg_week implementation
-    await msg_week(message)
 
-
-@router.message(Command("lunch"))
-@router.message(Command("eda"))
-async def cmd_lunch(message: Message):
-    # Placeholder: implement canteen info later or read from config
-    await message.answer("Обед: в столовой с 12:30 до 13:30. Место: главный корпус, 2 этаж.")
 
 
 async def _get_user_group(user_id: int) -> str | None:
@@ -137,31 +127,7 @@ def _get_week_start_date(date: datetime = None) -> datetime:
     return date - timedelta(days=days_since_monday)
 
 
-@router.message(Command("today"))
-async def cmd_today(message: Message):
-    group = await _get_user_group(message.from_user.id)
-    if not group:
-        return await message.answer("Укажи группу: /setgroup ...")
 
-    today = datetime.now()
-    date_s = today.strftime("%Y-%m-%d")
-    day_names = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
-    day_name = day_names[today.weekday()]
-    
-    text = await get_today_schedule(group)
-    await message.answer(f"<b>{day_name} {date_s} (Сегодня)</b>\n\n{text}")
-
-
-@router.message(Command("tomorrow"))
-async def cmd_tomorrow(message: Message):
-    group = await _get_user_group(message.from_user.id)
-    if not group:
-        return await message.answer("Укажи группу: /setgroup ...")
-
-    tomorrow = datetime.now() + timedelta(days=1)
-    date_s = tomorrow.strftime("%Y-%m-%d")
-    day_names = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
-    day_name = day_names[tomorrow.weekday()]
     
     text = await get_today_schedule(group, offset=1)
     await message.answer(f"<b>{day_name} {date_s} (Завтра)</b>\n\n{text}")

@@ -57,7 +57,6 @@ async def _ensure_curator(user_id: int) -> bool:
 
 
 @router.message(F.text == "Написать группе")
-@router.message(Command("to_group"))
 async def msg_to_group_button(message: Message, state: FSMContext):
     """Handle 'Write to group' button or /to_group command."""
     if not await _ensure_curator(message.from_user.id):
@@ -135,35 +134,7 @@ async def to_group_confirm(message: Message, state: FSMContext):
     logger.info(f"Curator {message.from_user.id} sent broadcast to group {group}, reached {sent} users")
 
 
-@router.message(Command("links"))
-async def cmd_links(message: Message):
-    # show links for user's group
-    group = None
-    # try to obtain user's group from their profile in DB
-    # reusing same users table access via get_users_in_group isn't suitable; query directly
-    try:
-        from aiosqlite import connect
-        from bot.db.db import DB_PATH
-
-        async with connect(DB_PATH) as db:
-            async with db.execute("SELECT group_name FROM users WHERE user_id = ?", (message.from_user.id,)) as cur:
-                row = await cur.fetchone()
-                group = row[0] if row else None
-    except Exception:
-        group = None
-
-    if not group:
-        return await message.answer("У тебя не задана группа. Укажи её: /setgroup <группа>")
-
-    links = await get_pair_links(group)
-    if not links:
-        return await message.answer("Ссылок для группы нет.")
-    lines = [f"{num} пара: {url}" for num, url in links]
-    await message.answer("Ссылки для группы " + group + ":\n" + "\n".join(lines))
-
-
 @router.message(F.text == "Ссылки на пары")
-@router.message(Command("link"))
 async def cmd_link_start(message: Message, state: FSMContext):
     if not await _ensure_curator(message.from_user.id):
         return await message.answer("Доступ только для кураторов/админов.")
@@ -260,16 +231,6 @@ async def link_confirm(message: Message, state: FSMContext):
         await message.answer(f"Ошибка при добавлении ссылки: {e}", reply_markup=curator_keyboard)
 
 
-@router.message(Command("clear_links"))
-async def cmd_clear_links(message: Message, state: FSMContext):
-    if not await _ensure_curator(message.from_user.id):
-        return await message.answer("Доступ только для кураторов/админов.")
-    await state.clear()
-    await state.set_state(ClearLinksStates.waiting_group)
-    await message.answer("Укажи группу для удаления всех ссылок:")
-    await message.answer("Напиши название группы в следующем сообщении.")
-
-
 @router.message(ClearLinksStates.waiting_group)
 async def clear_links_group(message: Message, state: FSMContext):
     group = message.text.strip()
@@ -283,15 +244,6 @@ async def clear_links_group(message: Message, state: FSMContext):
     except Exception as exc:
         await state.clear()
         await message.answer(f"Ошибка при удалении ссылок для {group}: {exc}")
-
-
-@router.message(Command("replace"))
-async def cmd_replace_start(message: Message, state: FSMContext):
-    if not await _ensure_curator(message.from_user.id):
-        return await message.answer("Доступ только для кураторов/админов.")
-    await state.clear()
-    await state.set_state(ReplaceStates.group)
-    await message.answer("Укажи группу для замены:")
 
 
 @router.message(ReplaceStates.group)
