@@ -408,6 +408,12 @@ async def direct_message_admin_confirm(message: Message, state: FSMContext):
     curator_id = message.from_user.id
     curator_name = message.from_user.first_name or f"Куратор {curator_id}"
     
+    # Validate target_admin_id
+    if not target_admin_id or target_admin_id not in (settings.ADMINS or []):
+        await state.clear()
+        from bot.utils.keyboards import curator_keyboard
+        return await message.answer(f"Ошибка: администратор не найден или сессия истекла. Попробуйте снова.", reply_markup=curator_keyboard)
+    
     try:
         # Format message with sender info
         formatted_msg = (
