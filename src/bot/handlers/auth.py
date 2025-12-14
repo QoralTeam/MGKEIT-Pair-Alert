@@ -79,12 +79,36 @@ async def require_authentication(
 @router.message(AuthStates.waiting_password)
 async def process_initial_password(message: Message, state: FSMContext):
     """Handle initial password entry for authentication."""
+    from bot.db.db import (
+        is_user_locked, is_user_blocked_by_admin, increment_failed_login,
+        lock_user, reset_failed_login
+    )
+    import time
+    
     user_id = message.from_user.id
     message_id = message.message_id
     
     if message.text in ("Отмена", "Назад", "Назад в настройки"):
         await state.clear()
         await message.answer("Отменено.")
+        return
+    
+    # Check if user is blocked by admin
+    if await is_user_blocked_by_admin(user_id):
+        await message.answer("❌ Ваш аккаунт заблокирован администратором.\nОбратитесь в поддержку.")
+        return
+    
+    # Check if user is temporarily locked
+    if await is_user_locked(user_id):
+        async with aiosqlite.connect(DB_PATH) as db:
+            cursor = await db.execute(
+                "SELECT locked_until FROM users WHERE user_id = ?",
+                (user_id,),
+            )
+            row = await cursor.fetchone()
+        locked_until = row[0] if row else 0
+        remaining_minutes = int((locked_until - time.time()) / 60) + 1
+        await message.answer(f"⏳ Аккаунт временно заблокирован.\nОставшееся время: ~{remaining_minutes} минут.")
         return
     
     password = message.text
@@ -99,8 +123,44 @@ async def process_initial_password(message: Message, state: FSMContext):
     # Verify password
     if not await verify_user_password(user_id, password):
         logger.warning(f"User {user_id} entered incorrect password")
-        await message.answer("❌ Неверный пароль. Попробуйте снова или нажмите Отмена.")
+        
+        # Increment failed attempts
+        failed_count = await increment_failed_login(user_id)
+        logger.warning(f"User {user_id} failed login attempt #{failed_count}")
+        
+        # Apply progressive lockout
+        if failed_count >= 15:
+            # 5 more attempts after 1 hour = admin unlock only
+            await lock_user(user_id, 0)  # Permanent lock (0 = will check blocked_by_admin)
+            await message.answer(
+                "❌ Слишком много неудачных попыток входа.\n"
+                "Ваш аккаунт заблокирован. Обратитесь к администратору для разблокировки."
+            )
+        elif failed_count >= 10:
+            # 5 more attempts = 1 hour lockout
+            await lock_user(user_id, 3600)  # 1 hour
+            await message.answer(
+                "❌ Слишком много неудачных попыток входа.\n"
+                "Аккаунт заблокирован на 1 час."
+            )
+        elif failed_count >= 5:
+            # First 5 attempts = 5 minute lockout
+            await lock_user(user_id, 300)  # 5 minutes
+            await message.answer(
+                "❌ Неверный пароль.\n"
+                "Аккаунт заблокирован на 5 минут."
+            )
+        else:
+            # Less than 5 attempts
+            remaining_attempts = 5 - failed_count
+            await message.answer(
+                f"❌ Неверный пароль. Попробуйте снова.\n"
+                f"Осталось попыток: {remaining_attempts}"
+            )
         return
+    
+    # Password correct - reset failed attempts
+    await reset_failed_login(user_id)
     
     # Password correct, check if 2FA is enabled
     import aiosqlite

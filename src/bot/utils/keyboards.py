@@ -141,6 +141,7 @@ admin_panel_keyboard = ReplyKeyboardMarkup(
             KeyboardButton(text="Показать роли"),
         ],
         [
+            KeyboardButton(text="Управление доступом"),
             KeyboardButton(text="Назад"),
         ],
     ],

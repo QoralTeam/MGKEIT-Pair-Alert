@@ -5,20 +5,25 @@ from aiogram import F, Router, types
 from aiogram.filters import Command
 from aiogram.types import Message, InlineKeyboardButton, InlineKeyboardMarkup
 
-from bot.db.db import DB_PATH, list_schedule_for_group, get_replacements_for_group_date
+from bot.db.db import DB_PATH, list_schedule_for_group, get_replacements_for_group_date, get_pair_links
 
 router = Router(name="schedule")
 
 
-async def get_today_schedule(group: str, offset: int = 0) -> str:
+async def get_today_schedule(group: str, offset: int = 0) -> tuple:
+    """Return (text, inline_keyboard) for schedule with links."""
     target = (datetime.now() + timedelta(days=offset)).strftime("%Y-%m-%d")
     rows = await list_schedule_for_group(group, target)
 
     # Fetch replacements and override schedule where present
     replacements = await get_replacements_for_group_date(group, target)
+    
+    # Fetch pair links for this date
+    pair_links = await get_pair_links(group, target)
+    links_map = {pair_num: url for pair_num, url in pair_links}
 
     if not rows and not replacements:
-        return "Пар нет"
+        return ("Пар нет", None)
 
     # Build map of pair_number -> row (pair_number, time_start, time_end, subject, teacher, room, week_type)
     schedule_map = {
@@ -30,15 +35,28 @@ async def get_today_schedule(group: str, offset: int = 0) -> str:
         schedule_map[int(pnum)] = ("", subj or "", teacher or "", room or "")
 
     lines = []
+    inline_buttons = []
     for n in sorted(schedule_map.keys()):
         time_start, time_end, subj, teacher, room = schedule_map[n]
         time_label = f"{time_start}–{time_end}" if time_end else (time_start or '—')
         # mark if this pair has replacement
         rep_mark = " (замена)" if n in replacements else ""
+        
+        # Add link indicator if exists
+        link_indicator = ""
+        if n in links_map:
+            link_indicator = " 🔗"
+            inline_buttons.append(
+                [InlineKeyboardButton(text=f"Ссылка на {n} пару", url=links_map[n])]
+            )
+        
         lines.append(
-            f"{n} пара{rep_mark} • {time_label} • {subj or '—'}\n   {teacher or '—'} • {room or '—'}"
+            f"{n} пара{rep_mark}{link_indicator} • {time_label} • {subj or '—'}\n   {teacher or '—'} • {room or '—'}"
         )
-    return "\n\n".join(lines)
+    
+    text = "\n\n".join(lines)
+    keyboard = InlineKeyboardMarkup(inline_keyboard=inline_buttons) if inline_buttons else None
+    return (text, keyboard)
 
 
 async def _parse_time(date_s: str, time_s: str):
@@ -138,8 +156,8 @@ async def cmd_today(message: Message):
     day_names = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
     day_name = day_names[today.weekday()]
     
-    text = await get_today_schedule(group)
-    await message.answer(f"<b>{day_name} {date_s} (Сегодня)</b>\n\n{text}")
+    text, keyboard = await get_today_schedule(group)
+    await message.answer(f"<b>{day_name} {date_s} (Сегодня)</b>\n\n{text}", reply_markup=keyboard)
 
 
 async def cmd_tomorrow(message: Message):
@@ -153,8 +171,8 @@ async def cmd_tomorrow(message: Message):
     day_names = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
     day_name = day_names[tomorrow.weekday()]
     
-    text = await get_today_schedule(group, offset=1)
-    await message.answer(f"<b>{day_name} {date_s} (Завтра)</b>\n\n{text}")
+    text, keyboard = await get_today_schedule(group, offset=1)
+    await message.answer(f"<b>{day_name} {date_s} (Завтра)</b>\n\n{text}", reply_markup=keyboard)
 
 
 # Handlers for reply-keyboard buttons (text messages)

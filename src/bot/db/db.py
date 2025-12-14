@@ -196,6 +196,18 @@ async def init_db() -> None:
                 await db.execute("ALTER TABLE pair_links_new RENAME TO pair_links")
                 await db.commit()
             
+            # Add login attempt tracking columns for security
+            col_names = await _get_column_names(db, "users")
+            if "failed_login_attempts" not in col_names:
+                await db.execute("ALTER TABLE users ADD COLUMN failed_login_attempts INTEGER DEFAULT 0")
+                await db.commit()
+            if "locked_until" not in col_names:
+                await db.execute("ALTER TABLE users ADD COLUMN locked_until REAL DEFAULT 0")
+                await db.commit()
+            if "blocked_by_admin" not in col_names:
+                await db.execute("ALTER TABLE users ADD COLUMN blocked_by_admin INTEGER DEFAULT 0")
+                await db.commit()
+            
             # Initialize passwords for admins and curators from .env
             await _initialize_env_passwords(db)
 
@@ -594,3 +606,95 @@ async def get_replacements_for_group_date(group_name: str, date: str) -> dict:
         ) as cur:
             rows = await cur.fetchall()
     return {int(r[0]): (r[1], r[2] or "", r[3] or "") for r in rows}
+
+
+# Login attempt tracking functions
+async def increment_failed_login(user_id: int) -> int:
+    """Increment failed login counter and return new count."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "UPDATE users SET failed_login_attempts = failed_login_attempts + 1 WHERE user_id = ?",
+            (user_id,)
+        )
+        await db.commit()
+        async with db.execute(
+            "SELECT failed_login_attempts FROM users WHERE user_id = ?",
+            (user_id,)
+        ) as cur:
+            row = await cur.fetchone()
+    return row[0] if row else 0
+
+
+async def reset_failed_login(user_id: int) -> None:
+    """Reset failed login counter after successful authentication."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "UPDATE users SET failed_login_attempts = 0, locked_until = 0 WHERE user_id = ?",
+            (user_id,)
+        )
+        await db.commit()
+
+
+async def lock_user(user_id: int, seconds: int) -> None:
+    """Lock user account until specified time (unix timestamp)."""
+    import time
+    locked_until = time.time() + seconds
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "UPDATE users SET locked_until = ? WHERE user_id = ?",
+            (locked_until, user_id)
+        )
+        await db.commit()
+
+
+async def is_user_locked(user_id: int) -> bool:
+    """Check if user account is locked due to failed login attempts."""
+    import time
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT locked_until FROM users WHERE user_id = ?",
+            (user_id,)
+        ) as cur:
+            row = await cur.fetchone()
+    if not row:
+        return False
+    locked_until = row[0]
+    if locked_until > time.time():
+        return True
+    return False
+
+
+async def is_user_blocked_by_admin(user_id: int) -> bool:
+    """Check if user is blocked by admin."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT blocked_by_admin FROM users WHERE user_id = ?",
+            (user_id,)
+        ) as cur:
+            row = await cur.fetchone()
+    return bool(row[0]) if row else False
+
+
+async def set_user_blocked(user_id: int, blocked: bool) -> None:
+    """Set user blocked status by admin."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "UPDATE users SET blocked_by_admin = ? WHERE user_id = ?",
+            (1 if blocked else 0, user_id)
+        )
+        await db.commit()
+
+
+async def get_locked_users() -> list:
+    """Get list of users currently locked or blocked by admin."""
+    import time
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            """SELECT user_id, first_name, locked_until, blocked_by_admin 
+               FROM users 
+               WHERE locked_until > ? OR blocked_by_admin = 1
+               ORDER BY user_id""",
+            (time.time(),)
+        ) as cur:
+            rows = await cur.fetchall()
+    return rows

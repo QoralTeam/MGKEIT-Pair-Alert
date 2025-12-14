@@ -181,6 +181,105 @@ async def msg_admin_sync(message: Message):
         await message.answer(f"Ошибка при запуске синхронизации: {exc}")
 
 
+@router.message(F.text == "Управление доступом")
+async def msg_admin_manage_access(message: Message):
+    """Show locked and blocked users, allow admin to unblock them."""
+    if not await _ensure_admin(message.from_user.id):
+        return await message.answer("Только для админов.")
+    
+    from bot.db.db import get_locked_users, set_user_blocked
+    import time
+    
+    locked_users = await get_locked_users()
+    
+    if not locked_users:
+        await message.answer(
+            "✅ Заблокированных или временно запрещённых пользователей нет.",
+            reply_markup=admin_panel_keyboard
+        )
+        return
+    
+    # Build list of locked users
+    text = "<b>🔒 Заблокированные пользователи:</b>\n\n"
+    
+    for user_id, first_name, locked_until, blocked_by_admin in locked_users:
+        status = ""
+        if blocked_by_admin:
+            status = "🔴 Заблокирован админом (требует разблокировки)"
+        elif locked_until and locked_until > time.time():
+            remaining_min = int((locked_until - time.time()) / 60) + 1
+            status = f"🟡 Временно заблокирован (~{remaining_min} мин)"
+        
+        text += f"ID: <code>{user_id}</code>\n"
+        text += f"Имя: {first_name or 'N/A'}\n"
+        text += f"Статус: {status}\n\n"
+    
+    # Create inline keyboard for unblocking
+    from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+    inline_kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🔓 Разблокировать пользователя", callback_data="admin:unblock_user")]
+        ]
+    )
+    
+    await message.answer(text, reply_markup=inline_kb)
+
+
+@router.callback_query(lambda c: c.data == "admin:unblock_user")
+async def cb_unblock_user_start(callback: CallbackQuery, state: FSMContext):
+    """Start unblock user process."""
+    if not await _ensure_admin(callback.from_user.id):
+        return await callback.answer("Только для админов.", show_alert=True)
+    
+    await callback.answer()
+    await state.set_state(AdminRoleStates.waiting_user_id)
+    cancel_kb = ReplyKeyboardMarkup(
+        keyboard=[[KeyboardButton(text="Отмена")]],
+        resize_keyboard=True,
+    )
+    await callback.message.answer(
+        "Введите ID пользователя для разблокировки:",
+        reply_markup=cancel_kb
+    )
+
+
+@router.message(AdminRoleStates.waiting_user_id)
+async def admin_unblock_user_id(message: Message, state: FSMContext):
+    """Handle user ID for unblocking."""
+    if message.text == "Отмена":
+        await state.clear()
+        await message.answer("Отменено.", reply_markup=admin_panel_keyboard)
+        return
+    
+    if not await _ensure_admin(message.from_user.id):
+        return await message.answer("Только для админов.")
+    
+    try:
+        user_id = int(message.text.strip())
+    except ValueError:
+        return await message.answer("ID должен быть числом. Попробуйте снова.")
+    
+    # Unblock user
+    from bot.db.db import set_user_blocked
+    await set_user_blocked(user_id, False)
+    
+    # Also reset temporary lock
+    import aiosqlite
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "UPDATE users SET locked_until = 0, failed_login_attempts = 0 WHERE user_id = ?",
+            (user_id,)
+        )
+        await db.commit()
+    
+    await state.clear()
+    await message.answer(
+        f"✅ Пользователь {user_id} разблокирован.",
+        reply_markup=admin_panel_keyboard
+    )
+    logger.info(f"Admin {message.from_user.id} unblocked user {user_id}")
+
+
 @router.message(F.text == "Назад")
 async def msg_admin_back(message: Message):
     if not await _ensure_admin(message.from_user.id):
