@@ -9,6 +9,13 @@ DB_PATH = Path(settings.DB_PATH)
 DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 
 
+async def _get_column_names(db, table_name: str) -> list:
+    """Get list of column names for a table."""
+    cursor = await db.execute(f"PRAGMA table_info('{table_name}')")
+    cols = await cursor.fetchall()
+    return [row[1] for row in cols]
+
+
 async def init_db() -> None:
     try:
         async with aiosqlite.connect(DB_PATH) as db:
