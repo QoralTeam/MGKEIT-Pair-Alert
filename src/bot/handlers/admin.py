@@ -1459,16 +1459,16 @@ async def cb_group_admin(callback: CallbackQuery, state: FSMContext):
     # Get current FSM state to determine what flow we're in
     current_state = await state.get_state()
     
-    if current_state == AdminScheduleStates.waiting_group.__class__.__name__:
+    if current_state == AdminScheduleStates.waiting_group:
         await state.set_state(AdminScheduleStates.waiting_date)
         await callback.message.edit_text(f"Группа: {group}\n\nВведите дату (YYYY-MM-DD):")
-    elif current_state == AdminReplacementStates.waiting_group.__class__.__name__:
+    elif current_state == AdminReplacementStates.waiting_group:
         await state.set_state(AdminReplacementStates.waiting_date)
         await callback.message.edit_text(f"Группа: {group}\n\nВведите дату (YYYY-MM-DD):")
-    elif current_state == AdminLinkStates.waiting_group.__class__.__name__:
+    elif current_state == AdminLinkStates.waiting_group:
         await state.set_state(AdminLinkStates.waiting_pair)
         await callback.message.edit_text(f"Группа: {group}\n\nВведите номер пары (число):")
-    elif current_state == AdminLunchStates.waiting_group.__class__.__name__:
+    elif current_state == AdminLunchStates.waiting_group:
         await state.set_state(AdminLunchStates.waiting_start_time)
         await callback.message.edit_text(f"Группа: {group}\n\nВведите время начала обеда (HH:MM):")
     else:
