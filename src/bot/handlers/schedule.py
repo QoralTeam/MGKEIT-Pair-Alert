@@ -127,6 +127,36 @@ def _get_week_start_date(date: datetime = None) -> datetime:
     return date - timedelta(days=days_since_monday)
 
 
+async def cmd_today(message: Message):
+    """Get today's schedule."""
+    group = await _get_user_group(message.from_user.id)
+    if not group:
+        return await message.answer("Укажи группу: /setgroup ...")
+
+    today = datetime.now()
+    date_s = today.strftime("%Y-%m-%d")
+    day_names = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
+    day_name = day_names[today.weekday()]
+    
+    text = await get_today_schedule(group)
+    await message.answer(f"<b>{day_name} {date_s} (Сегодня)</b>\n\n{text}")
+
+
+async def cmd_tomorrow(message: Message):
+    """Get tomorrow's schedule."""
+    group = await _get_user_group(message.from_user.id)
+    if not group:
+        return await message.answer("Укажи группу: /setgroup ...")
+
+    tomorrow = datetime.now() + timedelta(days=1)
+    date_s = tomorrow.strftime("%Y-%m-%d")
+    day_names = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
+    day_name = day_names[tomorrow.weekday()]
+    
+    text = await get_today_schedule(group, offset=1)
+    await message.answer(f"<b>{day_name} {date_s} (Завтра)</b>\n\n{text}")
+
+
 # Handlers for reply-keyboard buttons (text messages)
 @router.message(F.text == "Сегодня")
 async def msg_today(message: Message):
