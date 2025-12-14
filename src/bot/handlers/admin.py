@@ -29,6 +29,7 @@ from bot.db.db import (
     DB_PATH as _DB_PATH_dummy
 )
 from bot.utils.keyboards import admin_keyboard, admin_panel_keyboard
+from bot.utils.helpers import get_campus_selection_keyboard, get_group_selection_keyboard, ALL_GROUPS
 
 router = Router(name="admin")
 
@@ -120,13 +121,8 @@ async def msg_admin_add_replacement(message: Message, state: FSMContext):
     
     await state.clear()
     await state.set_state(AdminReplacementStates.waiting_group)
-    await message.answer(
-        "Введите группу для которой хотите добавить замену:",
-        reply_markup=ReplyKeyboardMarkup(
-            keyboard=[[KeyboardButton(text="Отмена")]],
-            resize_keyboard=True,
-        ),
-    )
+    kb = get_campus_selection_keyboard()
+    await message.answer("Выберите кампус:", reply_markup=kb)
 
 
 @router.message(F.text == "Добавить ссылку на занятия")
@@ -137,13 +133,8 @@ async def msg_admin_add_link_msg(message: Message, state: FSMContext):
     
     await state.clear()
     await state.set_state(AdminLinkStates.waiting_group)
-    await message.answer(
-        "Введите название группы:",
-        reply_markup=ReplyKeyboardMarkup(
-            keyboard=[[KeyboardButton(text="Отмена")]],
-            resize_keyboard=True,
-        ),
-    )
+    kb = get_campus_selection_keyboard()
+    await message.answer("Выберите кампус:", reply_markup=kb)
 
 
 @router.message(F.text == "Изменение времени обедов")
@@ -154,13 +145,8 @@ async def msg_admin_change_lunch_time(message: Message, state: FSMContext):
     
     await state.clear()
     await state.set_state(AdminLunchStates.waiting_group)
-    await message.answer(
-        "Введите название группы для настройки времени обедов:",
-        reply_markup=ReplyKeyboardMarkup(
-            keyboard=[[KeyboardButton(text="Отмена")]],
-            resize_keyboard=True,
-        ),
-    )
+    kb = get_campus_selection_keyboard()
+    await message.answer("Выберите кампус:", reply_markup=kb)
 
 
 @router.message(F.text == "Статистика")
@@ -559,17 +545,13 @@ async def msg_admin_edit_schedule(message: Message, state: FSMContext):
         return await message.answer("Только для админов.")
     await state.clear()
     await state.set_state(AdminScheduleStates.waiting_group)
-    await message.answer(
-        "Введите группу для которой хотите изменить или добавить расписание:",
-        reply_markup=ReplyKeyboardMarkup(
-            keyboard=[[KeyboardButton(text="Отмена")]],
-            resize_keyboard=True,
-        ),
-    )
+    kb = get_campus_selection_keyboard()
+    await message.answer("Выберите кампус:", reply_markup=kb)
 
 
 @router.message(AdminScheduleStates.waiting_group)
 async def admin_schedule_group(message: Message, state: FSMContext):
+    # This handler is now for backwards compatibility / error handling
     if message.text == "Отмена":
         await state.clear()
         await message.answer("Отменено. Возвращаюсь в админ-панель.", reply_markup=admin_panel_keyboard)
@@ -1435,5 +1417,61 @@ async def cmd_to_group_admin(message: Message):
     return await message.answer("Не распознан формат команды.")
 
 
-# Commands removed - use buttons
+# Callback handlers for group selection in admin operations
+@router.callback_query(lambda c: c.data.startswith("campus:") and c.message.text and "выбор" in c.message.text.lower())
+async def cb_campus_admin(callback: CallbackQuery, state: FSMContext):
+    """Handle campus selection in admin group selection flows."""
+    campus = callback.data.split(":", 1)[1]
+    await callback.answer()
+    await state.update_data(selected_campus=campus)
+    kb = get_group_selection_keyboard(campus, page=0)
+    await callback.message.edit_text(f"Выберите группу в кампусе {campus}:", reply_markup=kb)
+
+
+@router.callback_query(lambda c: c.data.startswith("page:") and c.message.text and "выбор" in c.message.text.lower())
+async def cb_pagination_admin(callback: CallbackQuery, state: FSMContext):
+    """Handle pagination in admin group selection."""
+    parts = callback.data.split(":")
+    campus = parts[1]
+    page = int(parts[2])
+    await callback.answer()
+    kb = get_group_selection_keyboard(campus, page=page)
+    await callback.message.edit_reply_markup(reply_markup=kb)
+
+
+@router.callback_query(lambda c: c.data == "select_campus" and c.message.text and "выбор" in c.message.text.lower())
+async def cb_back_campus_admin(callback: CallbackQuery, state: FSMContext):
+    """Back to campus selection in admin flow."""
+    await callback.answer()
+    kb = get_campus_selection_keyboard()
+    await callback.message.edit_text("Выберите кампус:", reply_markup=kb)
+
+
+@router.callback_query(lambda c: c.data.startswith("group:") and c.message.text and "выбор" in c.message.text.lower())
+async def cb_group_admin(callback: CallbackQuery, state: FSMContext):
+    """Handle group selection in admin operations (schedule, replacement, etc)."""
+    group = callback.data.split(":", 1)[1]
+    await callback.answer()
+    
+    # Update FSM data with selected group
+    await state.update_data(group=group)
+    
+    # Get current FSM state to determine what flow we're in
+    current_state = await state.get_state()
+    
+    if current_state == AdminScheduleStates.waiting_group.__class__.__name__:
+        await state.set_state(AdminScheduleStates.waiting_date)
+        await callback.message.edit_text(f"Группа: {group}\n\nВведите дату (YYYY-MM-DD):")
+    elif current_state == AdminReplacementStates.waiting_group.__class__.__name__:
+        await state.set_state(AdminReplacementStates.waiting_date)
+        await callback.message.edit_text(f"Группа: {group}\n\nВведите дату (YYYY-MM-DD):")
+    elif current_state == AdminLinkStates.waiting_group.__class__.__name__:
+        await state.set_state(AdminLinkStates.waiting_pair)
+        await callback.message.edit_text(f"Группа: {group}\n\nВведите номер пары (число):")
+    elif current_state == AdminLunchStates.waiting_group.__class__.__name__:
+        await state.set_state(AdminLunchStates.waiting_start_time)
+        await callback.message.edit_text(f"Группа: {group}\n\nВведите время начала обеда (HH:MM):")
+    else:
+        # Unknown flow, just show the group
+        await callback.message.edit_text(f"Выбрана группа: {group}")
 

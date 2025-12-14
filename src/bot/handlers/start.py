@@ -22,16 +22,13 @@ from bot.utils.keyboards import (
     curator_keyboard,
     student_keyboard,
 )
+from bot.utils.helpers import get_campus_selection_keyboard, get_group_selection_keyboard, ALL_GROUPS
 from bot.utils.password_manager import set_default_password, is_password_changed
 from bot.handlers.auth import require_authentication
 from bot.utils.session_manager import is_session_active
 from bot.utils.logger import logger
 
 router = Router(name="start")
-
-
-class SetGroupStates(StatesGroup):
-    waiting_group = State()
 
 
 @router.message(CommandStart())
@@ -147,7 +144,7 @@ async def _is_admin(user_id: int) -> bool:
     return role == "admin"
 
 
-# Inline callback: start set-group flow
+# Inline callback: start campus selection flow
 @router.callback_query(lambda c: c.data == "set_group")
 async def cb_set_group(callback: types.CallbackQuery, state: FSMContext):
     # If admin pressed it somehow, ignore
@@ -156,15 +153,49 @@ async def cb_set_group(callback: types.CallbackQuery, state: FSMContext):
         await callback.answer("Администратор: установка группы не требуется.", show_alert=True)
         return
     await callback.answer()
-    await state.set_state(SetGroupStates.waiting_group)
-    await callback.message.answer("Введите вашу группу (пример: 1ОЗИП-1-11-25):")
+    await state.clear()
+    kb = get_campus_selection_keyboard()
+    await callback.message.answer("Выберите кампус:", reply_markup=kb)
 
 
-@router.message(SetGroupStates.waiting_group)
-async def state_set_group(message: Message, state: FSMContext):
-    group = message.text.strip().upper()
-    if not group:
-        return await message.answer("Пустое значение. Введите корректную группу:")
+@router.callback_query(lambda c: c.data.startswith("campus:"))
+async def cb_select_campus(callback: types.CallbackQuery, state: FSMContext):
+    """Handle campus selection."""
+    campus = callback.data.split(":", 1)[1]
+    await callback.answer()
+    await state.clear()
+    await state.update_data(selected_campus=campus)
+    kb = get_group_selection_keyboard(campus, page=0)
+    await callback.message.edit_text(f"Выберите группу в кампусе {campus}:", reply_markup=kb)
+
+
+@router.callback_query(lambda c: c.data.startswith("page:"))
+async def cb_pagination(callback: types.CallbackQuery, state: FSMContext):
+    """Handle pagination in group selection."""
+    parts = callback.data.split(":")
+    campus = parts[1]
+    page = int(parts[2])
+    await callback.answer()
+    kb = get_group_selection_keyboard(campus, page=page)
+    await callback.message.edit_reply_markup(reply_markup=kb)
+
+
+@router.callback_query(lambda c: c.data == "select_campus")
+async def cb_back_to_campus(callback: types.CallbackQuery, state: FSMContext):
+    """Back to campus selection from group selection."""
+    await callback.answer()
+    await state.clear()
+    kb = get_campus_selection_keyboard()
+    await callback.message.edit_text("Выберите кампус:", reply_markup=kb)
+
+
+@router.callback_query(lambda c: c.data.startswith("group:"))
+async def cb_select_group(callback: types.CallbackQuery, state: FSMContext):
+    """Handle group selection."""
+    group = callback.data.split(":", 1)[1]
+    await callback.answer()
+    
+    user_id = callback.from_user.id
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute(
             """
@@ -172,10 +203,11 @@ async def state_set_group(message: Message, state: FSMContext):
             VALUES (?, ?, ?)
             ON CONFLICT(user_id) DO UPDATE SET group_name = excluded.group_name
             """,
-            (message.from_user.id, group, settings.REMINDER_DEFAULT_MINUTES),
+            (user_id, group, settings.REMINDER_DEFAULT_MINUTES),
         )
         await db.commit()
+    
     await state.clear()
-    await message.answer(f"Группа {group} сохранена!")
-    # show student keyboard
-    await message.answer("Выберите действие:", reply_markup=student_keyboard)
+    await callback.message.edit_text(f"✅ Группа {group} сохранена!")
+    # Show student keyboard
+    await callback.message.answer("Выберите действие:", reply_markup=student_keyboard)

@@ -5,12 +5,14 @@ from aiogram.types import (
     KeyboardButton,
     Message,
     ReplyKeyboardMarkup,
+    CallbackQuery,
 )
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 
 from bot.db.db import DB_PATH, get_user_role, set_user_name
 from bot.utils.keyboards import student_settings_keyboard, curator_settings_keyboard, admin_settings_keyboard, student_keyboard, curator_keyboard, admin_keyboard
+from bot.utils.helpers import get_campus_selection_keyboard, get_group_selection_keyboard, ALL_GROUPS
 from bot.config import settings
 
 
@@ -295,47 +297,59 @@ async def msg_set_days_chosen(message: Message):
 # Button handler: change group
 @router.message(F.text == "Изменить группу")
 async def msg_change_group(message: Message, state: FSMContext):
-    await state.set_state(SettingsChangeGroupStates.waiting_group)
-    await message.answer(
-        "Введите новую группу (например: ПКС-24-1):",
-        reply_markup=ReplyKeyboardMarkup(
-            keyboard=[[KeyboardButton(text="Отмена")]],
-            resize_keyboard=True,
-        ),
-    )
+    await state.clear()
+    await state.update_data(change_group_flow=True)
+    kb = get_campus_selection_keyboard()
+    await message.answer("Выберите кампус:", reply_markup=kb)
 
 
-# FSM handler: new group entered
-@router.message(SettingsChangeGroupStates.waiting_group)
-async def state_change_group(message: Message, state: FSMContext):
-    if message.text == "Отмена":
-        await state.clear()
-        async with aiosqlite.connect(DB_PATH) as db:
-            async with db.execute(
-                "SELECT reminder_minutes, week_parity, group_name FROM users WHERE user_id = ?",
-                (message.from_user.id,),
-            ) as cur:
-                row = await cur.fetchone()
-        
-        if not row:
-            await message.answer("Сначала установи группу.")
-            return
-        
-        mins, parity, group = row
-        kb = await get_settings_keyboard(message.from_user.id)
-        await message.answer(
-            f"Текущие настройки:\n"
-            f"• Группа: {group}\n"
-            f"• Напоминание: за {mins} мин\n"
-            f"• Чётность: {parity}\n\n"
-            "Что изменить?",
-            reply_markup=kb,
-        )
+# Callback handlers for group change flow
+@router.callback_query(lambda c: c.data.startswith("campus:"))
+async def cb_select_campus_settings(callback: CallbackQuery, state: FSMContext):
+    """Handle campus selection in settings."""
+    data = await state.get_data()
+    if not data.get("change_group_flow"):
+        # This is for start.py flow, ignore
         return
     
-    group = message.text.strip()
-    user_id = message.from_user.id
+    campus = callback.data.split(":", 1)[1]
+    await callback.answer()
+    await state.update_data(selected_campus=campus)
+    kb = get_group_selection_keyboard(campus, page=0)
+    await callback.message.edit_text(f"Выберите группу в кампусе {campus}:", reply_markup=kb)
+
+
+@router.callback_query(lambda c: c.data.startswith("page:"))
+async def cb_pagination_settings(callback: CallbackQuery, state: FSMContext):
+    """Handle pagination in settings group change."""
+    parts = callback.data.split(":")
+    campus = parts[1]
+    page = int(parts[2])
+    await callback.answer()
+    kb = get_group_selection_keyboard(campus, page=page)
+    await callback.message.edit_reply_markup(reply_markup=kb)
+
+
+@router.callback_query(lambda c: c.data == "select_campus")
+async def cb_back_to_campus_settings(callback: CallbackQuery, state: FSMContext):
+    """Back to campus selection from group selection in settings."""
+    await callback.answer()
+    kb = get_campus_selection_keyboard()
+    await callback.message.edit_text("Выберите кампус:", reply_markup=kb)
+
+
+@router.callback_query(lambda c: c.data.startswith("group:"))
+async def cb_select_group_settings(callback: CallbackQuery, state: FSMContext):
+    """Handle group selection in settings."""
+    data = await state.get_data()
+    if not data.get("change_group_flow"):
+        # This is for start.py flow, ignore
+        return
     
+    group = callback.data.split(":", 1)[1]
+    await callback.answer()
+    
+    user_id = callback.from_user.id
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute(
             "UPDATE users SET group_name = ? WHERE user_id = ?",
@@ -345,11 +359,27 @@ async def state_change_group(message: Message, state: FSMContext):
     
     await state.clear()
     
-    kb = await get_settings_keyboard(message.from_user.id)
-    await message.answer(
-        f"Группа изменена на: {group}",
-        reply_markup=kb,
-    )
+    # Show confirmation
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT reminder_minutes, week_parity, group_name FROM users WHERE user_id = ?",
+            (user_id,),
+        ) as cur:
+            row = await cur.fetchone()
+    
+    if row:
+        mins, parity, _ = row
+        kb = await get_settings_keyboard(user_id)
+        await callback.message.edit_text(
+            f"✅ Группа изменена на: {group}\n\n"
+            f"Текущие настройки:\n"
+            f"• Группа: {group}\n"
+            f"• Напоминание: за {mins} мин\n"
+            f"• Чётность: {parity}\n\n"
+            "Что ещё изменить?",
+            reply_markup=None
+        )
+        await callback.message.answer("", reply_markup=kb)
 
 
 # Button handler: back to settings menu from submenu
