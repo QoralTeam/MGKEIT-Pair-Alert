@@ -104,6 +104,9 @@ async def _delete_after(message: Message, delay_seconds: int) -> None:
 
 
 async def _ensure_admin(user_id: int) -> bool:
+    # Check both settings.ADMINS and database role
+    if user_id in settings.ADMINS:
+        return True
     role = await get_user_role(user_id)
     return role == "admin"
 
