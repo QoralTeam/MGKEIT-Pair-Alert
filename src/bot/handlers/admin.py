@@ -1383,7 +1383,14 @@ async def direct_message_curator_confirm(message: Message, state: FSMContext):
     admin_id = message.from_user.id
     admin_name = message.from_user.first_name or f"Администратор {admin_id}"
     
+    if not target_curator_id:
+        await state.clear()
+        return await message.answer("Ошибка: куратор не выбран. Попробуйте еще раз.", reply_markup=admin_keyboard)
+    
     try:
+        # Ensure target_curator_id is int
+        target_curator_id = int(target_curator_id)
+        
         # Format message with sender info
         formatted_msg = (
             f"<b>📨 От администратора:</b>\n"
