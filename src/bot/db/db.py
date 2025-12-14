@@ -334,46 +334,69 @@ async def set_user_role(user_id: int, role: str) -> None:
 
 
 async def get_user_role(user_id: int) -> str:
-    """Return the role for a user. Defaults to 'student' if not set or missing."""
-    # First check static lists from settings
+    """Return the role for a user. Defaults to 'student' if not set or missing.
+    
+    Priority: Database role (if set) > Settings (ADMINS/CURATORS) > Default 'student'
+    """
+    # First check database for explicitly set role
+    async with aiosqlite.connect(DB_PATH) as db:
+        cursor = await db.execute(
+            "SELECT role FROM users WHERE user_id = ?", (user_id,)
+        )
+        row = await cursor.fetchone()
+        if row and row[0]:
+            # User has explicit role set in DB, use it
+            return row[0]
+    
+    # If not in DB, check settings for admin/curator lists
     try:
         if user_id in settings.ADMINS:
             return "admin"
         if user_id in settings.CURATORS:
             return "curator"
     except Exception:
-        # if settings missing or malformed, fall back to DB
+        # if settings missing or malformed, fall back to default
         pass
-
-    async with aiosqlite.connect(DB_PATH) as db:
-        cursor = await db.execute(
-            "SELECT role FROM users WHERE user_id = ?", (user_id,)
-        )
-        row = await cursor.fetchone()
-        if not row or not row[0]:
-            return "student"
-        return row[0]
+    
+    # Default to student
+    return "student"
 
 
 async def list_users_by_role(role: str) -> list:
-    """Return list of user_ids for a given role."""
+    """Return list of user_ids for a given role.
+    
+    Gets users with explicitly set role from DB, then adds users from settings
+    if they don't already have a different role in DB.
+    """
     results = []
+    
+    # Get users with explicitly set role from database
     async with aiosqlite.connect(DB_PATH) as db:
         cursor = await db.execute(
             "SELECT user_id FROM users WHERE role = ?", (role,)
         )
         rows = await cursor.fetchall()
         results = [r[0] for r in rows]
-
-    # Include static IDs from settings for admins/curators
+    
+    # Add from static settings only if they don't already have a role in DB
+    db_user_ids = set()
+    async with aiosqlite.connect(DB_PATH) as db:
+        cursor = await db.execute("SELECT user_id FROM users WHERE role IS NOT NULL AND role != ''")
+        rows = await cursor.fetchall()
+        db_user_ids = {r[0] for r in rows}
+    
     try:
         if role == "admin":
-            results.extend([int(x) for x in settings.ADMINS if x])
+            for admin_id in (settings.ADMINS or []):
+                if int(admin_id) not in db_user_ids and admin_id not in results:
+                    results.append(int(admin_id))
         if role == "curator":
-            results.extend([int(x) for x in settings.CURATORS if x])
+            for curator_id in (settings.CURATORS or []):
+                if int(curator_id) not in db_user_ids and curator_id not in results:
+                    results.append(int(curator_id))
     except Exception:
         pass
-
+    
     # Deduplicate and sort
     results = sorted(set(results))
     return results
