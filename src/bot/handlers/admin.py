@@ -79,6 +79,10 @@ class AdminRoleStates(StatesGroup):
     waiting_role_choice = State()
 
 
+class AdminUnblockStates(StatesGroup):
+    waiting_user_id = State()
+
+
 class AdminLunchStates(StatesGroup):
     waiting_group = State()
     waiting_start_time = State()
@@ -232,7 +236,7 @@ async def cb_unblock_user_start(callback: CallbackQuery, state: FSMContext):
         return await callback.answer("Только для админов.", show_alert=True)
     
     await callback.answer()
-    await state.set_state(AdminRoleStates.waiting_user_id)
+    await state.set_state(AdminUnblockStates.waiting_user_id)
     cancel_kb = ReplyKeyboardMarkup(
         keyboard=[[KeyboardButton(text="Отмена")]],
         resize_keyboard=True,
@@ -243,7 +247,7 @@ async def cb_unblock_user_start(callback: CallbackQuery, state: FSMContext):
     )
 
 
-@router.message(AdminRoleStates.waiting_user_id)
+@router.message(AdminUnblockStates.waiting_user_id)
 async def admin_unblock_user_id(message: Message, state: FSMContext):
     """Handle user ID for unblocking."""
     if message.text == "Отмена":
