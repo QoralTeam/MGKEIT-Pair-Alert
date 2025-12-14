@@ -105,9 +105,9 @@ curator_keyboard = ReplyKeyboardMarkup(
 admin_keyboard = ReplyKeyboardMarkup(
     keyboard=[
         [
-                KeyboardButton(text="Рассылка всем (в разработке)"),
-                KeyboardButton(text="Кураторам (в разработке)"),
-                KeyboardButton(text="Конкретной группе (в разработке)"),
+                KeyboardButton(text="Рассылка всем"),
+                KeyboardButton(text="Кураторам"),
+                KeyboardButton(text="Конкретной группе"),
         ],
         [
             KeyboardButton(text="Написать куратору"),
