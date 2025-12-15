@@ -476,7 +476,7 @@ async def direct_message_admin_confirm(message: Message, state: FSMContext):
 
 
 # Callback handlers for group selection in curator operations
-@router.callback_query(lambda c: c.data.startswith("campus:") and c.message.text and "выбор" in c.message.text.lower())
+@router.callback_query(F.data.startswith("campus:"))
 async def cb_campus_curator(callback: CallbackQuery, state: FSMContext):
     """Handle campus selection in curator group selection flows."""
     campus = callback.data.split(":", 1)[1]
@@ -486,7 +486,7 @@ async def cb_campus_curator(callback: CallbackQuery, state: FSMContext):
     await callback.message.edit_text(f"Выберите группу в кампусе {campus}:", reply_markup=kb)
 
 
-@router.callback_query(lambda c: c.data.startswith("page:") and c.message.text and "выбор" in c.message.text.lower())
+@router.callback_query(F.data.startswith("page:"))
 async def cb_pagination_curator(callback: CallbackQuery, state: FSMContext):
     """Handle pagination in curator group selection."""
     parts = callback.data.split(":")
@@ -497,7 +497,7 @@ async def cb_pagination_curator(callback: CallbackQuery, state: FSMContext):
     await callback.message.edit_reply_markup(reply_markup=kb)
 
 
-@router.callback_query(lambda c: c.data == "select_campus" and c.message.text and "выбор" in c.message.text.lower())
+@router.callback_query(F.data == "select_campus")
 async def cb_back_campus_curator(callback: CallbackQuery, state: FSMContext):
     """Back to campus selection in curator flow."""
     await callback.answer()
@@ -505,7 +505,7 @@ async def cb_back_campus_curator(callback: CallbackQuery, state: FSMContext):
     await callback.message.edit_text("Выберите кампус:", reply_markup=kb)
 
 
-@router.callback_query(lambda c: c.data.startswith("group:") and c.message.text and "выбор" in c.message.text.lower())
+@router.callback_query(F.data.startswith("group:"))
 async def cb_group_curator(callback: CallbackQuery, state: FSMContext):
     """Handle group selection in curator operations (links, replacements)."""
     group = callback.data.split(":", 1)[1]

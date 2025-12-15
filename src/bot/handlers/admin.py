@@ -1561,7 +1561,7 @@ async def cmd_to_group_admin(message: Message):
 
 
 # Callback handlers for group selection in admin operations
-@router.callback_query(lambda c: c.data.startswith("campus:") and c.message.text and "выбор" in c.message.text.lower())
+@router.callback_query(F.data.startswith("campus:"))
 async def cb_campus_admin(callback: CallbackQuery, state: FSMContext):
     """Handle campus selection in admin group selection flows."""
     campus = callback.data.split(":", 1)[1]
@@ -1571,7 +1571,7 @@ async def cb_campus_admin(callback: CallbackQuery, state: FSMContext):
     await callback.message.edit_text(f"Выберите группу в кампусе {campus}:", reply_markup=kb)
 
 
-@router.callback_query(lambda c: c.data.startswith("page:") and c.message.text and "выбор" in c.message.text.lower())
+@router.callback_query(F.data.startswith("page:"))
 async def cb_pagination_admin(callback: CallbackQuery, state: FSMContext):
     """Handle pagination in admin group selection."""
     parts = callback.data.split(":")
@@ -1582,7 +1582,7 @@ async def cb_pagination_admin(callback: CallbackQuery, state: FSMContext):
     await callback.message.edit_reply_markup(reply_markup=kb)
 
 
-@router.callback_query(lambda c: c.data == "select_campus" and c.message.text and "выбор" in c.message.text.lower())
+@router.callback_query(F.data == "select_campus")
 async def cb_back_campus_admin(callback: CallbackQuery, state: FSMContext):
     """Back to campus selection in admin flow."""
     await callback.answer()
@@ -1590,7 +1590,7 @@ async def cb_back_campus_admin(callback: CallbackQuery, state: FSMContext):
     await callback.message.edit_text("Выбор кампуса:", reply_markup=kb)
 
 
-@router.callback_query(lambda c: c.data.startswith("group:") and c.message.text and "выбор" in c.message.text.lower())
+@router.callback_query(F.data.startswith("group:"))
 async def cb_group_admin(callback: CallbackQuery, state: FSMContext):
     """Handle group selection in admin operations (schedule, replacement, etc)."""
     group = callback.data.split(":", 1)[1]

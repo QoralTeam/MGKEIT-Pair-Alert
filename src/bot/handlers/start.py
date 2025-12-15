@@ -1,6 +1,6 @@
 import aiosqlite
 from aiogram import F, Router, types
-from aiogram.filters import Command, CommandStart
+from aiogram.filters import Command, CommandStart, StateFilter
 from aiogram.types import Message
 from aiogram.utils.markdown import hbold
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
@@ -158,7 +158,7 @@ async def cb_set_group(callback: types.CallbackQuery, state: FSMContext):
     await callback.message.answer("Выберите кампус:", reply_markup=kb)
 
 
-@router.callback_query(lambda c: c.data.startswith("campus:"))
+@router.callback_query(StateFilter(None), F.data.startswith("campus:"))
 async def cb_select_campus(callback: types.CallbackQuery, state: FSMContext):
     """Handle campus selection."""
     campus = callback.data.split(":", 1)[1]
@@ -169,7 +169,7 @@ async def cb_select_campus(callback: types.CallbackQuery, state: FSMContext):
     await callback.message.edit_text(f"Выберите группу в кампусе {campus}:", reply_markup=kb)
 
 
-@router.callback_query(lambda c: c.data.startswith("page:"))
+@router.callback_query(StateFilter(None), F.data.startswith("page:"))
 async def cb_pagination(callback: types.CallbackQuery, state: FSMContext):
     """Handle pagination in group selection."""
     parts = callback.data.split(":")
@@ -180,7 +180,7 @@ async def cb_pagination(callback: types.CallbackQuery, state: FSMContext):
     await callback.message.edit_reply_markup(reply_markup=kb)
 
 
-@router.callback_query(lambda c: c.data == "select_campus")
+@router.callback_query(StateFilter(None), F.data == "select_campus")
 async def cb_back_to_campus(callback: types.CallbackQuery, state: FSMContext):
     """Back to campus selection from group selection."""
     await callback.answer()
@@ -189,7 +189,7 @@ async def cb_back_to_campus(callback: types.CallbackQuery, state: FSMContext):
     await callback.message.edit_text("Выберите кампус:", reply_markup=kb)
 
 
-@router.callback_query(lambda c: c.data.startswith("group:"))
+@router.callback_query(StateFilter(None), F.data.startswith("group:"))
 async def cb_select_group(callback: types.CallbackQuery, state: FSMContext):
     """Handle group selection."""
     group = callback.data.split(":", 1)[1]
