@@ -1602,19 +1602,36 @@ async def cb_group_admin(callback: CallbackQuery, state: FSMContext):
     # Get current FSM state to determine what flow we're in
     current_state = await state.get_state()
     
+    cancel_kb = ReplyKeyboardMarkup(
+        keyboard=[[KeyboardButton(text="Отмена")]],
+        resize_keyboard=True,
+    )
+    
     if current_state == AdminScheduleStates.waiting_group:
         await state.set_state(AdminScheduleStates.waiting_date)
-        await callback.message.edit_text(f"Группа: {group}\n\nВведите дату (YYYY-MM-DD):")
+        await callback.message.answer(
+            f"Группа: {group}\n\nВведите дату в формате ГГГГ-ММ-ДД:",
+            reply_markup=cancel_kb
+        )
     elif current_state == AdminReplacementStates.waiting_group:
         await state.set_state(AdminReplacementStates.waiting_date)
-        await callback.message.edit_text(f"Группа: {group}\n\nВведите дату (YYYY-MM-DD):")
+        await callback.message.answer(
+            f"Группа: {group}\n\nВведите дату замены в формате ГГГГ-ММ-ДД:",
+            reply_markup=cancel_kb
+        )
     elif current_state == AdminLinkStates.waiting_group:
         await state.set_state(AdminLinkStates.waiting_date)
-        await callback.message.edit_text(f"Группа: {group}\n\nВведите дату (YYYY-MM-DD):")
+        await callback.message.answer(
+            f"Группа: {group}\n\nВведите дату в формате ГГГГ-ММ-ДД:",
+            reply_markup=cancel_kb
+        )
     elif current_state == AdminLunchStates.waiting_group:
         await state.set_state(AdminLunchStates.waiting_start_time)
-        await callback.message.edit_text(f"Группа: {group}\n\nВведите время начала обеда (HH:MM):")
+        await callback.message.answer(
+            f"Группа: {group}\n\nВведите время начала обеда в формате HH:MM (например: 12:00):",
+            reply_markup=cancel_kb
+        )
     else:
         # Unknown flow, just show the group
-        await callback.message.edit_text(f"Выбрана группа: {group}")
+        await callback.message.answer(f"Выбрана группа: {group}")
 
