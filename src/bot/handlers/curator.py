@@ -1,5 +1,5 @@
 from aiogram import Router, F
-from aiogram.filters import Command
+from aiogram.filters import Command, StateFilter
 from aiogram.types import Message, KeyboardButton, ReplyKeyboardMarkup, CallbackQuery
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -476,7 +476,15 @@ async def direct_message_admin_confirm(message: Message, state: FSMContext):
 
 
 # Callback handlers for group selection in curator operations
-@router.callback_query(F.data.startswith("campus:"))
+@router.callback_query(
+    StateFilter(
+        LinkAddStates.group,
+        ReplaceStates.group,
+        ClearLinksStates.waiting_group,
+        ToGroupStates.group,
+    ),
+    F.data.startswith("campus:"),
+)
 async def cb_campus_curator(callback: CallbackQuery, state: FSMContext):
     """Handle campus selection in curator group selection flows."""
     campus = callback.data.split(":", 1)[1]
@@ -486,7 +494,15 @@ async def cb_campus_curator(callback: CallbackQuery, state: FSMContext):
     await callback.message.edit_text(f"Выберите группу в кампусе {campus}:", reply_markup=kb)
 
 
-@router.callback_query(F.data.startswith("page:"))
+@router.callback_query(
+    StateFilter(
+        LinkAddStates.group,
+        ReplaceStates.group,
+        ClearLinksStates.waiting_group,
+        ToGroupStates.group,
+    ),
+    F.data.startswith("page:"),
+)
 async def cb_pagination_curator(callback: CallbackQuery, state: FSMContext):
     """Handle pagination in curator group selection."""
     parts = callback.data.split(":")
@@ -497,7 +513,15 @@ async def cb_pagination_curator(callback: CallbackQuery, state: FSMContext):
     await callback.message.edit_reply_markup(reply_markup=kb)
 
 
-@router.callback_query(F.data == "select_campus")
+@router.callback_query(
+    StateFilter(
+        LinkAddStates.group,
+        ReplaceStates.group,
+        ClearLinksStates.waiting_group,
+        ToGroupStates.group,
+    ),
+    F.data == "select_campus",
+)
 async def cb_back_campus_curator(callback: CallbackQuery, state: FSMContext):
     """Back to campus selection in curator flow."""
     await callback.answer()
@@ -505,7 +529,15 @@ async def cb_back_campus_curator(callback: CallbackQuery, state: FSMContext):
     await callback.message.edit_text("Выберите кампус:", reply_markup=kb)
 
 
-@router.callback_query(F.data.startswith("group:"))
+@router.callback_query(
+    StateFilter(
+        LinkAddStates.group,
+        ReplaceStates.group,
+        ClearLinksStates.waiting_group,
+        ToGroupStates.group,
+    ),
+    F.data.startswith("group:"),
+)
 async def cb_group_curator(callback: CallbackQuery, state: FSMContext):
     """Handle group selection in curator operations (links, replacements)."""
     group = callback.data.split(":", 1)[1]
