@@ -1,23 +1,21 @@
 from datetime import datetime
 
 from aiogram import Router
+from aiogram.filters import Command
 from aiogram.types import Message
 
-router = Router()
+router = Router(name="reminders")
 
 
-@router.message()
-async def handle_reminder(message: Message):
-    # Example logic for recurring reminders
+@router.message(Command("reminder_debug"))
+async def handle_reminder_debug(message: Message):
+    """Debug-only endpoint.
+
+    Real reminders are sent by the scheduler; this handler must not intercept user messages.
+    """
     current_week = datetime.now().isocalendar()[1] % 2  # 0 for even, 1 for odd
-    if current_week == 0:
-        await message.answer(
-            "Напоминание: чётная неделя, проверьте расписание!"
-        )
-    else:
-        await message.answer(
-            "Напоминание: нечётная неделя, проверьте расписание!"
-        )
+    parity = "чётная" if current_week == 0 else "нечётная"
+    await message.answer(f"reminder_debug: сейчас {parity} неделя")
 
 
 import aiohttp

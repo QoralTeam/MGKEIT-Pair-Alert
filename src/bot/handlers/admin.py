@@ -31,6 +31,8 @@ from bot.db.db import (
 from bot.utils.keyboards import admin_keyboard, admin_panel_keyboard
 from bot.utils.helpers import get_campus_selection_keyboard, get_group_selection_keyboard, ALL_GROUPS
 
+from aiogram.exceptions import SkipHandler
+
 router = Router(name="admin")
 
 
@@ -40,8 +42,8 @@ class BroadcastStates(StatesGroup):
     target = State()  # For curator selection
 
 
-class DirectMessageStates(StatesGroup):
-    """FSM for direct messages to curator."""
+class AdminDirectMessageStates(StatesGroup):
+    """FSM for direct messages from admin to curator."""
     waiting_curator_query = State()  # Search by ID or name
     waiting_text = State()
     waiting_confirm = State()
@@ -1381,7 +1383,7 @@ async def msg_admin_direct_to_curator(message: Message, state: FSMContext):
         )
         
         await state.clear()
-        await state.set_state(DirectMessageStates.waiting_curator_query)
+        await state.set_state(AdminDirectMessageStates.waiting_curator_query)
         await state.update_data(curator_list=curator_info)
         await message.answer("\n".join(lines), reply_markup=cancel_kb)
     
@@ -1390,7 +1392,7 @@ async def msg_admin_direct_to_curator(message: Message, state: FSMContext):
         logger.error(f"Error showing curator list: {exc}")
 
 
-@router.message(DirectMessageStates.waiting_curator_query)
+@router.message(AdminDirectMessageStates.waiting_curator_query)
 async def direct_message_curator_query(message: Message, state: FSMContext):
     """Handle curator search by ID or name."""
     if message.text == "Отмена":
@@ -1420,7 +1422,7 @@ async def direct_message_curator_query(message: Message, state: FSMContext):
         # Exact match found
         curator = matches[0]
         await state.update_data(target_curator_id=curator["id"], target_curator_name=curator["name"])
-        await state.set_state(DirectMessageStates.waiting_text)
+        await state.set_state(AdminDirectMessageStates.waiting_text)
         
         username_str = f" (@{curator['username']})" if curator['username'] else ""
         await message.answer(
@@ -1441,7 +1443,7 @@ async def direct_message_curator_query(message: Message, state: FSMContext):
         await message.answer("\n".join(lines))
 
 
-@router.message(DirectMessageStates.waiting_text)
+@router.message(AdminDirectMessageStates.waiting_text)
 async def direct_message_curator_text(message: Message, state: FSMContext):
     """Handle message text to curator."""
     if message.text == "Отмена":
@@ -1451,7 +1453,7 @@ async def direct_message_curator_text(message: Message, state: FSMContext):
     
     msg_text = message.text.strip()
     await state.update_data(message_text=msg_text)
-    await state.set_state(DirectMessageStates.waiting_confirm)
+    await state.set_state(AdminDirectMessageStates.waiting_confirm)
     
     data = await state.get_data()
     curator_name = data.get("target_curator_name", "куратор")
@@ -1473,7 +1475,7 @@ async def direct_message_curator_text(message: Message, state: FSMContext):
     await message.answer(preview, reply_markup=confirm_kb)
 
 
-@router.message(DirectMessageStates.waiting_confirm)
+@router.message(AdminDirectMessageStates.waiting_confirm)
 async def direct_message_curator_confirm(message: Message, state: FSMContext):
     """Confirm and send direct message to curator."""
     if message.text == "Отмена":
@@ -1517,20 +1519,23 @@ async def direct_message_curator_confirm(message: Message, state: FSMContext):
         logger.error(f"Error sending direct message to curator {target_curator_id}: {exc}")
 
 
-@router.message()
+@router.message(F.text.startswith("@curators "))
 async def fallback_admin_text(message: Message):
-    # If admin requested to send to curators recently, naive: if message starts with @curators marker
-    if message.text and message.text.startswith("@curators ") and await _ensure_admin(message.from_user.id):
-        text = message.text[len("@curators "):]
-        curators = await list_users_by_role("curator")
-        sent = 0
-        for uid in curators:
-            try:
-                await message.bot.send_message(uid, text)
-                sent += 1
-            except Exception:
-                continue
-        return await message.answer(f"Отправлено кураторам: {sent}")
+    # Admin quick broadcast: send "@curators <text>".
+    # If the sender isn't admin, skip so other routers can handle the message.
+    if not await _ensure_admin(message.from_user.id):
+        raise SkipHandler
+
+    text = message.text[len("@curators "):]
+    curators = await list_users_by_role("curator")
+    sent = 0
+    for uid in curators:
+        try:
+            await message.bot.send_message(uid, text)
+            sent += 1
+        except Exception:
+            continue
+    return await message.answer(f"Отправлено кураторам: {sent}")
 
 
 @router.message(Command("to_group"))
