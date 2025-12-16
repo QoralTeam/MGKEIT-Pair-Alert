@@ -94,8 +94,7 @@ async def set_default_password(user_id: int, role: str) -> None:
 
 
 async def verify_user_password(user_id: int, password: str) -> bool:
-    """Verify user password and update last_auth_time if correct."""
-    import time
+    """Verify user password (no session side-effects)."""
     
     async with aiosqlite.connect(DB_PATH) as db:
         cursor = await db.execute(
@@ -110,15 +109,6 @@ async def verify_user_password(user_id: int, password: str) -> bool:
     hashed = row[0]
     if not verify_password(password, hashed):
         return False
-    
-    # Update last_auth_time
-    async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute(
-            "UPDATE users SET last_auth_time = ? WHERE user_id = ?",
-            (time.time(), user_id),
-        )
-        await db.commit()
-    
     return True
 
 

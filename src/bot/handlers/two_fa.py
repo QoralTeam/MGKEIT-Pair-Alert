@@ -221,7 +221,7 @@ async def process_enable_2fa_code(message: Message, state: FSMContext):
         await db.execute(
             """
             UPDATE users 
-            SET two_fa_enabled = 1, two_fa_secret = ?, backup_codes = ?
+            SET two_fa_enabled = 1, two_fa_secret = ?, backup_codes = ?, last_auth_time = 0
             WHERE user_id = ?
             """,
             (secret, backup_codes_hashed, user_id),
@@ -356,7 +356,7 @@ async def process_disable_2fa_code(message: Message, state: FSMContext):
         await db.execute(
             """
             UPDATE users 
-            SET two_fa_enabled = 0, two_fa_secret = '', backup_codes = ''
+            SET two_fa_enabled = 0, two_fa_secret = '', backup_codes = '', last_auth_time = 0
             WHERE user_id = ?
             """,
             (user_id,),

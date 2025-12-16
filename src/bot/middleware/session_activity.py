@@ -47,6 +47,7 @@ class SessionActivityMiddleware(BaseMiddleware):
         # Allow ongoing auth flow to proceed without refreshing session
         auth_states = {
             AuthStates.waiting_password.state,
+            AuthStates.waiting_2fa_code.state,
             AuthStates.waiting_new_password.state,
             AuthStates.waiting_confirm_password.state,
         }
