@@ -20,6 +20,7 @@ from bot.utils.password_manager import (
     validate_password,
 )
 from bot.utils.session_manager import authenticate_user, is_session_active
+from bot.utils.session_manager import invalidate_session
 from bot.config import settings
 from bot.utils.logger import logger
 from bot.utils.keyboards import admin_keyboard, curator_keyboard, student_keyboard
@@ -45,6 +46,71 @@ class ChangePasswordStates(StatesGroup):
     waiting_2fa_code = State()  # TOTP verification before finalizing password change
 
 
+class PasswordResetStates(StatesGroup):
+    waiting_2fa_code = State()
+
+
+@router.message(PasswordResetStates.waiting_2fa_code)
+async def process_password_reset_2fa(message: Message, state: FSMContext):
+    """Verify 2FA and reset password to role default (forces change on next login)."""
+    from bot.utils.password_manager import set_default_password
+    from bot.db.db import reset_failed_login
+
+    user_id = message.from_user.id
+    code = message.text.strip()
+
+    # Load 2FA data
+    async with aiosqlite.connect(DB_PATH) as db:
+        cursor = await db.execute(
+            "SELECT two_fa_secret, backup_codes, two_fa_enabled FROM users WHERE user_id = ?",
+            (user_id,),
+        )
+        row = await cursor.fetchone()
+
+    if not row or not bool(row[2]) or not row[0]:
+        await state.clear()
+        return await message.answer("Ошибка: 2FA не настроена. Обратитесь к администратору.")
+
+    secret = row[0]
+    backup_codes_json = row[1] or "[]"
+
+    # Verify code
+    is_valid = verify_totp_code(secret, code)
+    if not is_valid:
+        is_valid, updated_codes = verify_backup_code(code, backup_codes_json)
+        if is_valid:
+            async with aiosqlite.connect(DB_PATH) as db:
+                await db.execute(
+                    "UPDATE users SET backup_codes = ? WHERE user_id = ?",
+                    (updated_codes, user_id),
+                )
+                await db.commit()
+
+    if not is_valid:
+        return await message.answer("❌ Неверный код. Попробуйте снова.")
+
+    role = await get_user_role(user_id)
+    is_admin = role == "admin" or user_id in settings.ADMINS
+    is_curator = role == "curator" or user_id in settings.CURATORS
+    if not (is_admin or is_curator):
+        await state.clear()
+        return await message.answer("Сброс пароля доступен только для админов/кураторов.")
+
+    reset_role = "admin" if is_admin else "curator"
+    await set_default_password(user_id, reset_role)
+
+    # Clear lockouts and sessions
+    await reset_failed_login(user_id)
+    await invalidate_session(user_id)
+
+    await state.clear()
+    await message.answer(
+        "✅ Пароль сброшен.\n\n"
+        "Войдите с паролем по умолчанию и сразу смените его."
+    )
+    await require_authentication(user_id, message, state, "войти", force=True)
+
+
 async def require_authentication(
     user_id: int,
     message: Message,
@@ -61,6 +127,14 @@ async def require_authentication(
     if not force and await is_session_active(user_id):
         logger.info(f"User {user_id} has active session")
         return True
+
+    # If we are forcing auth (e.g., must change default password), explicitly drop any
+    # existing session timestamp to avoid partial-auth bypass paths.
+    if force:
+        try:
+            await invalidate_session(user_id)
+        except Exception:
+            pass
     
     logger.info(f"User {user_id} requires authentication (force={force}), starting auth flow")
     await state.set_state(AuthStates.waiting_password)
@@ -74,6 +148,39 @@ async def require_authentication(
         reply_markup=cancel_kb
     )
     return False
+
+
+@router.message(AuthStates.waiting_password, F.text == "Сбросить пароль")
+async def start_password_reset(message: Message, state: FSMContext):
+    """Start self-service password reset via 2FA after repeated failures."""
+    user_id = message.from_user.id
+
+    # Only for privileged users
+    role = await get_user_role(user_id)
+    is_admin = role == "admin" or user_id in settings.ADMINS
+    is_curator = role == "curator" or user_id in settings.CURATORS
+    if not (is_admin or is_curator):
+        await state.clear()
+        return await message.answer("Сброс пароля доступен только для админов/кураторов.")
+
+    async with aiosqlite.connect(DB_PATH) as db:
+        cursor = await db.execute(
+            "SELECT two_fa_enabled FROM users WHERE user_id = ?",
+            (user_id,),
+        )
+        row = await cursor.fetchone()
+    two_fa_enabled = bool(row[0]) if row else False
+    if not two_fa_enabled:
+        return await message.answer(
+            "Сброс пароля доступен только при включённой 2FA.\n"
+            "Если 2FA не настроена — обратитесь к администратору для сброса."
+        )
+
+    await state.set_state(PasswordResetStates.waiting_2fa_code)
+    await message.answer(
+        "🔐 Подтвердите сброс пароля.\n\n"
+        "Введите 6-значный код из приложения-аутентификатора или резервный код:"
+    )
 
 
 @router.message(AuthStates.waiting_password)
@@ -153,10 +260,22 @@ async def process_initial_password(message: Message, state: FSMContext):
         else:
             # Less than 5 attempts
             remaining_attempts = 5 - failed_count
-            await message.answer(
-                f"❌ Неверный пароль. Попробуйте снова.\n"
-                f"Осталось попыток: {remaining_attempts}"
-            )
+            if failed_count >= 3:
+                reset_kb = ReplyKeyboardMarkup(
+                    keyboard=[[KeyboardButton(text="Сбросить пароль")], [KeyboardButton(text="Отмена")]],
+                    resize_keyboard=True,
+                )
+                await message.answer(
+                    f"❌ Неверный пароль. Попробуйте снова.\n"
+                    f"Осталось попыток: {remaining_attempts}\n\n"
+                    "После 3 неудачных попыток доступен сброс пароля через 2FA.",
+                    reply_markup=reset_kb,
+                )
+            else:
+                await message.answer(
+                    f"❌ Неверный пароль. Попробуйте снова.\n"
+                    f"Осталось попыток: {remaining_attempts}"
+                )
         return
     
     # Password correct - reset failed attempts
@@ -176,15 +295,10 @@ async def process_initial_password(message: Message, state: FSMContext):
     if two_fa_enabled:
         # Require 2FA code
         await state.set_state(AuthStates.waiting_2fa_code)
-        cancel_kb = ReplyKeyboardMarkup(
-            keyboard=[[KeyboardButton(text="Отмена")]],
-            resize_keyboard=True
-        )
         await message.answer(
             "✅ Пароль верный.\n\n"
             "🔐 Введите 6-значный код из приложения-аутентификатора\n"
-            "или один из резервных кодов:",
-            reply_markup=cancel_kb
+            "или один из резервных кодов:"
         )
         logger.info(f"User {user_id} passed password check, waiting for 2FA code")
         return
@@ -234,11 +348,6 @@ async def process_2fa_code(message: Message, state: FSMContext):
     """Verify 2FA code (TOTP or backup code) after password."""
     user_id = message.from_user.id
     
-    if message.text in ("Отмена", "Назад", "Назад в настройки"):
-        await state.clear()
-        await message.answer("Отменено.")
-        return
-    
     code = message.text.strip()
     logger.info(f"User {user_id} attempting 2FA verification")
     
@@ -279,7 +388,7 @@ async def process_2fa_code(message: Message, state: FSMContext):
     
     if not is_valid:
         logger.warning(f"User {user_id} entered invalid 2FA code")
-        await message.answer("❌ Неверный код. Попробуйте снова или нажмите Отмена.")
+        await message.answer("❌ Неверный код. Попробуйте снова.")
         return
     
     # 2FA passed, check if password needs to be changed
