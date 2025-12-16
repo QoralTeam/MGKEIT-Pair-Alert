@@ -1,6 +1,6 @@
 import aiosqlite
 from aiogram import F, Router
-from aiogram.filters import Command
+from aiogram.filters import Command, StateFilter
 from aiogram.types import (
     KeyboardButton,
     Message,
@@ -32,6 +32,7 @@ async def get_settings_keyboard(user_id: int):
 
 
 class SettingsChangeGroupStates(StatesGroup):
+    waiting_campus = State()
     waiting_group = State()
 
 
@@ -298,28 +299,24 @@ async def msg_set_days_chosen(message: Message):
 @router.message(F.text == "Изменить группу")
 async def msg_change_group(message: Message, state: FSMContext):
     await state.clear()
-    await state.update_data(change_group_flow=True)
+    await state.set_state(SettingsChangeGroupStates.waiting_campus)
     kb = get_campus_selection_keyboard()
     await message.answer("Выберите кампус:", reply_markup=kb)
 
 
 # Callback handlers for group change flow
-@router.callback_query(lambda c: c.data.startswith("campus:"))
+@router.callback_query(StateFilter(SettingsChangeGroupStates.waiting_campus), F.data.startswith("campus:"))
 async def cb_select_campus_settings(callback: CallbackQuery, state: FSMContext):
     """Handle campus selection in settings."""
-    data = await state.get_data()
-    if not data.get("change_group_flow"):
-        # This is for start.py flow, ignore
-        return
-    
     campus = callback.data.split(":", 1)[1]
     await callback.answer()
     await state.update_data(selected_campus=campus)
+    await state.set_state(SettingsChangeGroupStates.waiting_group)
     kb = get_group_selection_keyboard(campus, page=0)
     await callback.message.edit_text(f"Выберите группу в кампусе {campus}:", reply_markup=kb)
 
 
-@router.callback_query(lambda c: c.data.startswith("page:"))
+@router.callback_query(StateFilter(SettingsChangeGroupStates.waiting_group), F.data.startswith("page:"))
 async def cb_pagination_settings(callback: CallbackQuery, state: FSMContext):
     """Handle pagination in settings group change."""
     parts = callback.data.split(":")
@@ -330,22 +327,18 @@ async def cb_pagination_settings(callback: CallbackQuery, state: FSMContext):
     await callback.message.edit_reply_markup(reply_markup=kb)
 
 
-@router.callback_query(lambda c: c.data == "select_campus")
+@router.callback_query(StateFilter(SettingsChangeGroupStates.waiting_group), F.data == "select_campus")
 async def cb_back_to_campus_settings(callback: CallbackQuery, state: FSMContext):
     """Back to campus selection from group selection in settings."""
     await callback.answer()
+    await state.set_state(SettingsChangeGroupStates.waiting_campus)
     kb = get_campus_selection_keyboard()
     await callback.message.edit_text("Выберите кампус:", reply_markup=kb)
 
 
-@router.callback_query(lambda c: c.data.startswith("group:"))
+@router.callback_query(StateFilter(SettingsChangeGroupStates.waiting_group), F.data.startswith("group:"))
 async def cb_select_group_settings(callback: CallbackQuery, state: FSMContext):
     """Handle group selection in settings."""
-    data = await state.get_data()
-    if not data.get("change_group_flow"):
-        # This is for start.py flow, ignore
-        return
-    
     group = callback.data.split(":", 1)[1]
     await callback.answer()
     
