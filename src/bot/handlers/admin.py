@@ -1,7 +1,7 @@
 import asyncio
 
 from aiogram import Router, F
-from aiogram.filters import Command, StateFilter
+from aiogram.filters import Command, StateFilter, Filter
 from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, ReplyKeyboardMarkup, KeyboardButton
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -31,7 +31,13 @@ from bot.db.db import (
 from bot.utils.keyboards import admin_keyboard, admin_panel_keyboard
 from bot.utils.helpers import get_campus_selection_keyboard, get_group_selection_keyboard, ALL_GROUPS
 
-from aiogram.exceptions import SkipHandler
+
+
+class _AdminCuratorsBroadcastFilter(Filter):
+    async def __call__(self, message: Message) -> bool:
+        if not message.text or not message.text.startswith("@curators "):
+            return False
+        return await _ensure_admin(message.from_user.id)
 
 router = Router(name="admin")
 
@@ -1519,13 +1525,9 @@ async def direct_message_curator_confirm(message: Message, state: FSMContext):
         logger.error(f"Error sending direct message to curator {target_curator_id}: {exc}")
 
 
-@router.message(F.text.startswith("@curators "))
+@router.message(_AdminCuratorsBroadcastFilter())
 async def fallback_admin_text(message: Message):
     # Admin quick broadcast: send "@curators <text>".
-    # If the sender isn't admin, skip so other routers can handle the message.
-    if not await _ensure_admin(message.from_user.id):
-        raise SkipHandler
-
     text = message.text[len("@curators "):]
     curators = await list_users_by_role("curator")
     sent = 0
