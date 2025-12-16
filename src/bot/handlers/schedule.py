@@ -6,6 +6,7 @@ from aiogram.filters import Command
 from aiogram.types import Message, InlineKeyboardButton, InlineKeyboardMarkup
 
 from bot.db.db import DB_PATH, list_schedule_for_group, get_replacements_for_group_date, get_pair_links
+from bot.db.db import get_lunches_for_date
 
 router = Router(name="schedule")
 
@@ -132,6 +133,18 @@ async def _get_user_group(user_id: int) -> str | None:
         ) as cur:
             row = await cur.fetchone()
     return row[0] if row else None
+
+
+async def _get_lunch_time_range(group_name: str) -> tuple[str, str] | None:
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT time_start, time_end FROM lunch_times WHERE group_name = ?",
+            (group_name,),
+        ) as cur:
+            row = await cur.fetchone()
+    if not row:
+        return None
+    return (row[0] or "", row[1] or "")
 
 
 def _get_week_start_date(date: datetime = None) -> datetime:
@@ -271,3 +284,36 @@ async def msg_next_pair(message: Message):
         msg = "<b>🔵 Следующая пара:</b>\nПар нет."
     
     await message.answer(msg)
+
+
+@router.message(F.text == "Обед")
+async def msg_lunch(message: Message):
+    """Show lunch menu for today for the user's group."""
+    group = await _get_user_group(message.from_user.id)
+    if not group:
+        return await message.answer("Сначала установи группу в настройках.")
+
+    today = datetime.now().strftime("%Y-%m-%d")
+    lunches = await get_lunches_for_date(group, today)
+    time_range = await _get_lunch_time_range(group)
+
+    header = f"<b>🍽 Обед</b>\n<b>{today}</b>\nГруппа: {group}"
+    if time_range and (time_range[0] or time_range[1]):
+        start, end = time_range
+        if start and end:
+            header += f"\nВремя: {start}–{end}"
+        elif start:
+            header += f"\nВремя: {start}"
+        elif end:
+            header += f"\nВремя: до {end}"
+
+    if not lunches:
+        return await message.answer(f"{header}\n\nНа сегодня обедов нет.")
+
+    lines = []
+    for time_start, item, price in lunches:
+        price_part = f" ({price})" if price else ""
+        time_part = f"{time_start} — " if time_start else ""
+        lines.append(f"• {time_part}{item}{price_part}")
+
+    await message.answer(f"{header}\n\n" + "\n".join(lines))
